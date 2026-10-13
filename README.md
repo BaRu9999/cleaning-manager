@@ -57,7 +57,7 @@ src/
     auth/guard.ts      requireMember / requireAdmin / assertAdmin
     date/jst.ts        JST 日付ユーティリティ
     supabase/          server / client / middleware / admin
-supabase/migrations/   0001_init.sql / 0002_storage.sql
+supabase/migrations/   0001_init.sql / 0002_storage.sql / 0003_cleaning_notification_settings.sql
 scripts/               seed.ts / set-admin.ts
 docs/DESIGN.md         設計ドキュメント
 ```
@@ -70,6 +70,7 @@ docs/DESIGN.md         設計ドキュメント
 2. **SQL Editor** で以下を順に実行:
    1. `supabase/migrations/0001_init.sql` … テーブル / インデックス / 外部キー / トリガー / RLS / 初期カテゴリー・清掃場所
    2. `supabase/migrations/0002_storage.sql` … `cleaning-photos` バケット（非公開）と Storage RLS
+   3. `supabase/migrations/0003_cleaning_notification_settings.sql` … 清掃専用の通知設定・RLS
 3. **Project Settings → API** から URL / anon key / service_role key を控える（→ 環境変数へ）。
 4. **Authentication → Providers → Email** を有効化。動作確認だけならメール確認を無効化しておくと楽です。
 
@@ -95,7 +96,7 @@ docs/DESIGN.md         設計ドキュメント
 | `cleaning_logs` | 在籍メンバー | 追加=本人（`actor_id = auth.uid()`）、削除=管理者、更新不可 |
 | `cleaning_photos` | 在籍メンバー | 追加=本人、削除=管理者 or アップロード者 |
 | `store_settings` | 在籍メンバー | 管理者のみ |
-| `notification_settings` | 管理者のみ（Webhook URL を含むため） | 管理者のみ |
+| `cleaning_notification_settings` | 管理者のみ（Webhook URL を含むため） | 管理者のみ |
 | Storage `cleaning-photos` | 在籍メンバー（署名付きURLで表示） | 追加=在籍メンバー、削除=管理者 or 所有者 |
 
 Cron は Cookie セッションを持たないため **service_role（`createAdminClient`）** で RLS を跨ぎます。
@@ -138,7 +139,7 @@ env は **import 時ではなく使用時に検証**します（`src/lib/env.ts`
 - **清掃未実施**（`check-overdue` が新規の期限超過を検知したとき）: 予定時刻・担当。1件につき1回だけ
 - **本日の清掃結果**（夜23:00）: 予定 / 完了 / 未実施 / 完了率 ＋ 未実施項目名
 
-二重送信は `notification_settings.last_daily_plan_on` / `last_closing_summary_on` と
+二重送信は `cleaning_notification_settings.last_daily_plan_on` / `last_closing_summary_on` と
 `cleaning_tasks.overdue_notified_at` で防止。`?force=1` で無視、`?dry=1` で送信せず生成結果のみ返します。
 
 ---
@@ -211,7 +212,7 @@ npm run set-admin -- you@example.com   # 管理者作成 / 復旧
 
 ## 9. 本番デプロイ方法
 
-1. Supabase 本番プロジェクトで `0001_init.sql` → `0002_storage.sql` を実行。
+1. Supabase 本番プロジェクトで `0001_init.sql` → `0002_storage.sql` → `0003_cleaning_notification_settings.sql` を実行。
 2. GitHub に push → Vercel に import。
 3. Vercel の環境変数を設定（`CRON_SECRET` を含む）。
 4. Deploy。
@@ -238,12 +239,12 @@ npm run set-admin -- you@example.com   # 管理者作成 / 復旧
 
 ---
 
-## 11. データモデル（`supabase/migrations/0001_init.sql`）
+## 11. データモデル（`supabase/migrations/`）
 
 `users` / `cleaning_categories` / `cleaning_areas` / `cleaning_master` / `cleaning_schedules` /
-`cleaning_tasks` / `cleaning_logs` / `cleaning_photos` / `notification_settings` / `store_settings`
+`cleaning_tasks` / `cleaning_logs` / `cleaning_photos` / `cleaning_notification_settings` / `store_settings`
 
-- 1店舗運用。設定（`store_settings` / `notification_settings`）は `id = 1` のシングルトン行。
+- 1店舗運用。設定（`store_settings` / `cleaning_notification_settings`）は `id = 1` のシングルトン行。
 - 頻度は `cleaning_schedules.frequency`（`daily` / `weekday` / `weekly` / `biweekly` / `monthly` /
   `monthly_twice` / `day_of_month` / `interval` / `manual`）。1つの清掃項目に複数スケジュール可。
 - `cleaning_tasks` はマスタ値の **snapshot**（`master_name` / `area_label` など）を持ち、
@@ -261,3 +262,26 @@ npm run set-admin -- you@example.com   # 管理者作成 / 復旧
 LINE 通知 / 複数店舗管理 / NFC・QR 清掃 / AI による清掃漏れ分析・スケジュール提案 /
 衛生点検・温度管理・HACCP / OJT 連携。純関数（頻度・集計・Slack 文面）は無改修で流用できます。
 複数店舗化は全テーブルへ `store_id` を追加し `is_store_member(store_id)` へ RLS を差し替える設計です。
+
+## 13. 棚卸しと清掃の Slack 設定の分離（既存環境の更新）
+
+同じ Supabase を利用するアプリが `notification_settings` の `id=1` を共用すると、
+Webhook URL と通知の有効/無効を上書きし合います。清掃側は追加マイグレーションで
+`cleaning_notification_settings` に独立させます。棚卸し側の変更は不要です。
+
+1. Preview DB で `supabase/migrations/0003_cleaning_notification_settings.sql` を実行。
+2. この変更を含む清掃アプリを Preview にデプロイ。
+3. 清掃の「Slack通知設定」で清掃用 URL と通知の有効/無効を登録。
+   共有されていた URL は用途を断定できないためコピーしません。登録まで清掃通知は停止します。
+   清掃の通知種別と最終送信日は引き継ぎます。
+4. 清掃の URL を変更・削除・無効化しても棚卸し側が変わらず、逆方向も同様であることを確認。
+   テスト送信は実際に Slack に投稿するため、確認済みの送信先で別途実施してください。
+5. 本番反映時も **DB → 清掃アプリ → 清掃用 URL の登録・有効化** の順で実施。
+   既に棚卸し側の URL が上書きされていた場合、棚卸し側で正しい URL を登録し直してください。
+
+旧 `notification_settings` の行・テーブル・RLS は変更・削除しません。
+新テーブルは管理者のみ読み書き可能で、Cron は従来どおり service_role でアクセスします。
+新テーブルが未作成・未設定でも旧テーブルへのフォールバックはしません。
+SQL の再実行で清掃側の登録済み URL を上書きすることはありません。
+アプリだけ旧版へ戻すと共有設定に再接続するため、ロールバック時は清掃側の通知と設定変更を
+停止してから戻してください。旧テーブルや棚卸し側を削除・初期化しないでください。

@@ -19,7 +19,7 @@
 実施ログ (cleaning_logs) + 写真 (cleaning_photos) ── 監査証跡・履歴・分析
 ```
 
-- **1店舗運用**のため店舗テーブルは持たず、`store_settings` / `notification_settings` は
+- **1店舗運用**のため店舗テーブルは持たず、`store_settings` / `cleaning_notification_settings` は
   シングルトン行（`id = 1`）。将来の複数店舗対応は §12。
 - 日付は常に **JST（Asia/Tokyo, UTC+9, DSTなし）**。DB には `YYYY-MM-DD` 文字列で保存し
   JST 暦日として扱う（`src/lib/date/jst.ts`）。期限のみ `timestamptz`（`due_at`）で保持。
@@ -53,7 +53,7 @@
 | `cleaning_tasks` | 実績 | Cron が日次生成する当日タスク。状態機械を持つ |
 | `cleaning_logs` | 実績 | タスクの状態変化（開始/完了/スキップ/差戻し）の追記専用ログ |
 | `cleaning_photos` | 実績 | 完了時の写真（Storage パス）。タスク/ログに紐付く |
-| `notification_settings` | 設定 | Slack Webhook・各通知のオンオフ・最終送信日（二重送信ガード） |
+| `cleaning_notification_settings` | 設定 | Slack Webhook・各通知のオンオフ・最終送信日（二重送信ガード） |
 | `store_settings` | 設定 | 店名・営業時間・時間帯定義（営業前/アイドル/閉店作業…）・ポジション一覧 |
 
 ### 主なリレーション / index
@@ -170,7 +170,7 @@
 - **本日清掃通知**: 時間帯ごとに項目名を列挙。
 - **未実施通知**: 期限超過1件ごと（予定時刻・担当）。`check-overdue` が新規超過のみ送る。
 - **閉店時通知**: 予定/完了/未実施/完了率＋未実施項目名。
-- 二重送信ガード: `notification_settings.last_daily_plan_on` / `last_closing_summary_on` に
+- 二重送信ガード: `cleaning_notification_settings.last_daily_plan_on` / `last_closing_summary_on` に
   対象日を記録。`overdue` は `cleaning_tasks.overdue_notified_at` で1回だけ。
 
 ## 10. 分析・ダッシュボード（`src/lib/cleaning/stats.ts` 純関数）
@@ -190,7 +190,7 @@
 
 ## 12. 将来拡張（設計上の逃げ道のみ確保、未実装）
 
-- LINE 通知: `notification_settings` に `line_*` 列を足し `src/lib/notify/` を channel 抽象化。
+- LINE 通知: `cleaning_notification_settings` に `line_*` 列を足し `src/lib/notify/` を channel 抽象化。
 - 複数店舗: 全テーブルに `store_id` を追加し `is_store_member(store_id)` へ RLS を差し替え、
   シングルトン設定を店舗別行に。純関数（recurrence/stats/messages）は無改修で流用可能。
 - NFC / QR: `cleaning_master.qr_token` を追加し `/scan/[token]` → 当日タスクへ誘導。

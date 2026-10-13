@@ -20,8 +20,8 @@ export default async function NotificationsPage() {
         <NotificationSettingsForm initial={settings} />
       ) : (
         <Alert tone="warning" title="設定行が見つかりません">
-          <code className="text-xs">supabase/migrations/0001_init.sql</code>{" "}
-          を適用してください（<code>notification_settings</code> の初期行が作成されます）。
+          <code className="text-xs">supabase/migrations/0003_cleaning_notification_settings.sql</code>{" "}
+          を適用してください（<code>cleaning_notification_settings</code> の初期行が作成されます）。
         </Alert>
       )}
 

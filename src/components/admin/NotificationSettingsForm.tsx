@@ -58,7 +58,7 @@ export function NotificationSettingsForm({
           />
           <Field
             label="Incoming Webhook URL"
-            hint="Slack アプリの Incoming Webhooks で発行。https://hooks.slack.com/services/... 形式。"
+            hint="清掃通知専用です。棚卸し側の設定には影響しません。Slack アプリの Incoming Webhooks で発行。https://hooks.slack.com/services/... 形式。"
           >
             <TextInput
               name="slackWebhookUrl"
