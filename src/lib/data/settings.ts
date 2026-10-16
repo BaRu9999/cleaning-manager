@@ -29,7 +29,7 @@ export async function getStoreSettings(): Promise<StoreSettings> {
 export async function getNotificationSettings(): Promise<NotificationSettings | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from("notification_settings")
+    .from("cleaning_notification_settings")
     .select("*")
     .eq("id", 1)
     .maybeSingle();
@@ -49,7 +49,7 @@ export async function getStoreSettingsAdmin(): Promise<StoreSettings> {
 export async function getNotificationSettingsAdmin(): Promise<NotificationSettings> {
   const admin = createAdminClient();
   const { data } = await admin
-    .from("notification_settings")
+    .from("cleaning_notification_settings")
     .select("*")
     .eq("id", 1)
     .maybeSingle();

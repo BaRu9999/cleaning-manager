@@ -47,8 +47,8 @@ export async function updateNotificationSettingsAction(
     }
 
     const supabase = await createClient();
-    const { error } = await supabase
-      .from("notification_settings")
+    const { data, error } = await supabase
+      .from("cleaning_notification_settings")
       .update({
         slack_enabled: d.slackEnabled,
         slack_webhook_url: d.slackWebhookUrl,
@@ -56,8 +56,11 @@ export async function updateNotificationSettingsAction(
         notify_overdue: d.notifyOverdue,
         notify_closing_summary: d.notifyClosingSummary,
       })
-      .eq("id", 1);
+      .eq("id", 1)
+      .select("id")
+      .maybeSingle();
     if (error) return fail(`保存に失敗しました: ${error.message}`);
+    if (!data) return fail("清掃の通知設定が見つかりません。管理者に設定の初期化を依頼してください。");
     revalidatePath("/admin/notifications");
     return ok();
   } catch (e) {
@@ -71,7 +74,7 @@ export async function sendTestSlackAction(): Promise<ActionResult> {
     await assertAdmin();
     const supabase = await createClient();
     const { data } = await supabase
-      .from("notification_settings")
+      .from("cleaning_notification_settings")
       .select("slack_webhook_url")
       .eq("id", 1)
       .maybeSingle();

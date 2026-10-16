@@ -61,7 +61,7 @@ async function handle(request: Request): Promise<Response> {
     if (!dry) {
       await postToSlackWebhook(settings.slackWebhookUrl, message);
       await admin
-        .from("notification_settings")
+        .from("cleaning_notification_settings")
         .update({ last_closing_summary_on: date })
         .eq("id", 1);
     }
