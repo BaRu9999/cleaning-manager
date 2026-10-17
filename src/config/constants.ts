@@ -18,6 +18,46 @@ export const MAX_PHOTOS_PER_TASK = 4;
 /** 写真の最大バイト数（クライアント側の事前チェック用。Storage 側でも 10MiB 制限） */
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
+/** 実施不可理由コード */
+export const SKIP_REASON_CODES = [
+  "busy",
+  "equipment_in_use",
+  "supply_shortage",
+  "equipment_issue",
+  "staff_shortage",
+  "safety",
+  "other",
+] as const;
+export type SkipReasonCode = (typeof SKIP_REASON_CODES)[number];
+export const SKIP_REASON_CODE_LABELS: Record<SkipReasonCode, string> = {
+  busy: "営業多忙",
+  equipment_in_use: "機器使用中",
+  supply_shortage: "洗剤・備品不足",
+  equipment_issue: "設備不具合",
+  staff_shortage: "人員不足",
+  safety: "安全上実施不可",
+  other: "その他",
+};
+
+/** 設備異常の重要度 */
+export const EQUIPMENT_SEVERITIES = ["low", "medium", "high", "critical"] as const;
+export type EquipmentSeverity = (typeof EQUIPMENT_SEVERITIES)[number];
+export const EQUIPMENT_SEVERITY_LABELS: Record<EquipmentSeverity, string> = {
+  low: "低",
+  medium: "中",
+  high: "高",
+  critical: "重大",
+};
+
+/** 設備異常の対応状況 */
+export const EQUIPMENT_STATUSES = ["open", "in_progress", "resolved"] as const;
+export type EquipmentStatus = (typeof EQUIPMENT_STATUSES)[number];
+export const EQUIPMENT_STATUS_LABELS: Record<EquipmentStatus, string> = {
+  open: "未対応",
+  in_progress: "対応中",
+  resolved: "解決済み",
+};
+
 // ---------------------------------------------------------------------------
 // 頻度
 // ---------------------------------------------------------------------------
@@ -136,6 +176,79 @@ export const ROLE_LABELS: Record<Role, string> = {
   admin: "管理者",
   staff: "スタッフ",
 };
+
+/**
+ * 役職（job_title）。権限（role: admin/staff）とは独立で、
+ * 「LINE 通知の内容」と「清掃の閲覧範囲」を決める。
+ */
+export const JOB_TITLES = [
+  "staff",
+  "cleaning_leader",
+  "hall_leader",
+  "manager",
+] as const;
+export type JobTitle = (typeof JOB_TITLES)[number];
+export const JOB_TITLE_LABELS: Record<JobTitle, string> = {
+  staff: "一般スタッフ",
+  cleaning_leader: "清掃リーダー",
+  hall_leader: "ホールリーダー",
+  manager: "店長",
+};
+
+/** カテゴリーの区分（ホールリーダーの既定フィルタ等に使用） */
+export const CATEGORY_SIDES = ["hall", "kitchen", "backyard", "other"] as const;
+export type CategorySide = (typeof CATEGORY_SIDES)[number];
+export const CATEGORY_SIDE_LABELS: Record<CategorySide, string> = {
+  hall: "ホール",
+  kitchen: "キッチン",
+  backyard: "バックヤード",
+  other: "その他",
+};
+
+/**
+ * LINE 通知種別（役職ごとに ON/OFF）。内容は役職で出し分ける。
+ *  morning  … 朝の清掃予定通知
+ *             staff        → 自分の担当だけ（Flex）
+ *             leader/店長  → 全清掃スケジュール（誰が・何時までに・どこを・状態）
+ *  progress … 途中進捗通知（設定時刻に「予定/完了/未実施/完了率 ＋ 未実施リスト」）
+ *  pending  … 未実施通知（期限が近いのに未着手 → 担当者本人＋受信役職へ）
+ *  overdue  … 期限超過通知（status=overdue → 担当者本人＋受信役職へ）
+ *  closing  … 閉店後レポート（店舗全体）
+ */
+export const LINE_NOTIFY_TYPES = [
+  "morning",
+  "progress",
+  "pending",
+  "overdue",
+  "closing",
+] as const;
+export type LineNotifyType = (typeof LINE_NOTIFY_TYPES)[number];
+export const LINE_NOTIFY_TYPE_LABELS: Record<LineNotifyType, string> = {
+  morning: "朝の清掃予定通知",
+  progress: "途中進捗通知",
+  pending: "未実施通知",
+  overdue: "期限超過通知",
+  closing: "閉店後レポート",
+};
+
+export type LineRolePrefs = Record<JobTitle, Record<LineNotifyType, boolean>>;
+
+export const DEFAULT_LINE_ROLE_PREFS: LineRolePrefs = {
+  // staff … 本人の担当のみ。進捗・閉店後は不要
+  staff: { morning: true, progress: false, pending: true, overdue: true, closing: false },
+  // cleaning_leader … 原則すべて（未実施・期限超過も通知）
+  cleaning_leader: { morning: true, progress: true, pending: true, overdue: true, closing: true },
+  // hall_leader … ホール系のスケジュール。進捗・閉店後は既定オフ（管理画面で変更可）
+  hall_leader: { morning: true, progress: false, pending: true, overdue: true, closing: false },
+  // manager … 全清掃 ＋ 管理情報（未実施・期限超過・担当未設定）
+  manager: { morning: true, progress: true, pending: true, overdue: true, closing: true },
+};
+
+export const DEFAULT_LINE_MORNING_TIME = "09:30";
+export const DEFAULT_LINE_PROGRESS_TIMES = ["17:00"];
+export const DEFAULT_LINE_CLOSING_TIME = "23:00";
+/** 未実施通知（期限前リマインド）の分オフセット。負=前 / 0=時刻 / 正=後 */
+export const DEFAULT_LINE_REMINDER_OFFSETS = [-30];
 
 export const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 

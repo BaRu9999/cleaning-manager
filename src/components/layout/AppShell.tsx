@@ -3,25 +3,27 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { APP_NAME, ROLE_LABELS, type Role } from "@/config/constants";
+import { APP_NAME, ROLE_LABELS, type JobTitle, type Role } from "@/config/constants";
 import { cn } from "@/lib/cn";
 import { bottomTabsForRole, navItemsForRole } from "./nav-items";
 
 export function AppShell({
   role,
+  jobTitle,
   displayName,
   storeName,
   children,
 }: {
   role: Role;
+  jobTitle: JobTitle;
   displayName: string;
   storeName: string;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const items = navItemsForRole(role);
-  const tabs = bottomTabsForRole(role);
+  const items = navItemsForRole(role, jobTitle);
+  const tabs = bottomTabsForRole(role, jobTitle);
 
   const isActive = (href: string) =>
     href === "/admin"

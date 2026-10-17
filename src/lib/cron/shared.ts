@@ -64,3 +64,17 @@ export async function loadDateTasksAdmin(
     .map(mapTask)
     .sort((a, b) => slotOrder(a.timeSlot) - slotOrder(b.timeSlot));
 }
+
+/** service_role で ID 指定のタスクを取得（Cron 専用） */
+export async function loadTasksByIdsAdmin(
+  admin: ReturnType<typeof createAdminClient>,
+  ids: string[],
+): Promise<CleaningTask[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await admin
+    .from("cleaning_tasks")
+    .select(TASK_SELECT)
+    .in("id", ids);
+  if (error) throw new Error(`タスク取得に失敗: ${error.message}`);
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map(mapTask);
+}

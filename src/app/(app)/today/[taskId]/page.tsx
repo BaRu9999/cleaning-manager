@@ -6,9 +6,10 @@ import { getStoreSettings } from "@/lib/data/settings";
 import { PHOTO_REQUIREMENT_LABELS, PRIORITY_LABELS } from "@/config/constants";
 import { formatLongJp, formatInstantJst } from "@/lib/date/jst";
 import { slotLabel } from "@/lib/cleaning/slots";
+import { formatWorkload } from "@/lib/cleaning/workload";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { StatusBadge } from "@/components/ui/Badge";
+import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { CompleteForm } from "@/components/today/CompleteForm";
 import { AdminTaskControls } from "@/components/today/AdminTaskControls";
 import { LogTimeline } from "@/components/today/LogTimeline";
@@ -44,7 +45,7 @@ export default async function TaskDetailPage({
         : formatInstantJst(task.dueAt) ?? "期限なし",
     ],
     ["担当", task.assigneeName || task.position || "指定なし"],
-    ["所要時間の目安", task.estimatedMinutes != null ? `${task.estimatedMinutes}分` : "—"],
+    ["所要時間の目安", formatWorkload(task.estimatedMinutes)],
     ["優先度", PRIORITY_LABELS[task.priority]],
     ["写真", PHOTO_REQUIREMENT_LABELS[task.photoRequirement]],
     task.source === "manual" ? ["種別", "手動追加"] : ["種別", "自動生成"],
@@ -55,7 +56,12 @@ export default async function TaskDetailPage({
       <PageHeader
         title={task.masterName}
         back={{ href: "/today", label: "今日の清掃" }}
-        action={<StatusBadge status={task.status} />}
+        action={
+          <div className="flex items-center gap-1.5">
+            {task.originTaskId ? <Badge tone="info">前日から繰越</Badge> : null}
+            <StatusBadge status={task.status} />
+          </div>
+        }
       />
 
       <Card>
@@ -123,6 +129,9 @@ export default async function TaskDetailPage({
         photoRequirement={task.photoRequirement}
         canOperate={true}
         initialPhotos={photos.map((p) => ({ id: p.id, signedUrl: p.signedUrl ?? null }))}
+        masterId={task.masterId}
+        areaId={task.areaId}
+        masterName={task.masterName}
       />
 
       {me.role === "admin" ? (

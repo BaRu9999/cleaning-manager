@@ -1,11 +1,13 @@
 /**
- * 期限超過チェック + 未実施 Slack 通知。
+ * 期限超過チェック + 未実施 Slack 通知（店舗全体 / 1チャンネル）。
  * 実行: Vercel Cron "0,30 * * * *"（30分毎）。
  * 認証: Authorization: Bearer ${CRON_SECRET}
  *
+ * 担当者本人への LINE リマインド/超過通知は /api/cron/line-reminder が担当。
+ *
  * 1. status が pending/in_progress かつ due_at < now() のタスクを overdue に更新
- * 2. Slack 有効かつ notify_overdue のとき、まだ通知していない overdue をまとめて投稿
- *    （overdue_notified_at で1回だけ）
+ * 2. Slack 有効かつ notify_overdue のとき、未通知（overdue_notified_at is null）の
+ *    overdue をまとめて投稿し、overdue_notified_at を打つ
  */
 
 import { NextResponse } from "next/server";
@@ -37,18 +39,15 @@ async function handle(request: Request): Promise<Response> {
   try {
     const admin = createAdminClient();
 
-    // 1. 期限超過へ遷移
     const { data: transitioned, error: upErr } = await admin
       .from("cleaning_tasks")
       .update({ status: "overdue" })
       .lt("due_at", nowIso)
-      .not("due_at", "is", null)
       .in("status", ["pending", "in_progress"])
       .select("id");
     if (upErr) throw new Error(`overdue 更新に失敗: ${upErr.message}`);
     const movedToOverdue = transitioned?.length ?? 0;
 
-    // 2. 未通知の overdue を収集
     const settings = await getNotificationSettingsAdmin();
     let notified = 0;
     if (
@@ -83,10 +82,7 @@ async function handle(request: Request): Promise<Response> {
         await admin
           .from("cleaning_tasks")
           .update({ overdue_notified_at: nowIso })
-          .in(
-            "id",
-            rows.map((r) => r.id),
-          );
+          .in("id", rows.map((r) => r.id));
         notified = rows.length;
       }
     }

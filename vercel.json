@@ -3,6 +3,9 @@
   "crons": [
     { "path": "/api/cron/generate-tasks", "schedule": "5 15 * * *" },
     { "path": "/api/cron/check-overdue", "schedule": "0,30 * * * *" },
+    { "path": "/api/cron/line-morning", "schedule": "0,30 * * * *" },
+    { "path": "/api/cron/line-progress", "schedule": "0,30 * * * *" },
+    { "path": "/api/cron/line-reminder", "schedule": "0,30 * * * *" },
     { "path": "/api/cron/slack-daily-plan", "schedule": "0 23 * * *" },
     { "path": "/api/cron/slack-closing-summary", "schedule": "0 14 * * *" }
   ]

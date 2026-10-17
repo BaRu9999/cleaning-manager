@@ -40,6 +40,14 @@ export default async function AnalysisPage({
       <PageHeader
         title="清掃漏れ分析"
         description={`直近 ${days} 日（${from} 〜 ${today}）／ 全体完了率 ${overall.rate}%・未実施 ${overall.missed} 件`}
+        action={
+          <Link
+            href="/admin/analysis/time"
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-700"
+          >
+            実績時間分析 →
+          </Link>
+        }
       />
 
       <div className="flex gap-2">

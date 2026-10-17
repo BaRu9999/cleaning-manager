@@ -8,6 +8,7 @@ const ACTION_LABELS: Record<LogAction, string> = {
   skip: "スキップ",
   reopen: "再開",
   uncomplete: "完了取消",
+  carry_over: "翌日へ繰越",
 };
 
 export function LogTimeline({ logs }: { logs: CleaningLog[] }) {

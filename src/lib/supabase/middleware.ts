@@ -1,8 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicEnv, hasSupabaseEnv } from "@/lib/env";
+import { AUTH_USER_EMAIL_HEADER, AUTH_USER_ID_HEADER } from "./auth-headers";
 
-const PUBLIC_PREFIXES = ["/login", "/auth", "/api/auth"];
+// LIFF 配下は LINE トークンで認証するため Supabase セッション不要
+const PUBLIC_PREFIXES = ["/login", "/auth", "/api/auth", "/liff"];
 
 /**
  * すべてのリクエストで Supabase セッションを更新し、未ログインで保護ページに
@@ -38,6 +40,18 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // 検証済みユーザーを後続の Server Component / Server Action へヘッダーで引き継ぐ。
+  // 無ければ確実に削除する（クライアントが同名ヘッダーを送っても常にここで上書き/削除されるため、
+  // なりすましは成立しない）。
+  if (user) {
+    request.headers.set(AUTH_USER_ID_HEADER, user.id);
+    request.headers.set(AUTH_USER_EMAIL_HEADER, user.email ?? "");
+  } else {
+    request.headers.delete(AUTH_USER_ID_HEADER);
+    request.headers.delete(AUTH_USER_EMAIL_HEADER);
+  }
+  response = NextResponse.next({ request });
 
   const path = request.nextUrl.pathname;
   const isPublic =

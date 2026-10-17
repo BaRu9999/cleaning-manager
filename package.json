@@ -15,12 +15,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx scripts/seed.ts",
+    "seed:production-cleaning": "tsx scripts/seed-production-cleaning.ts",
     "set-admin": "tsx scripts/set-admin.ts"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
     "@supabase/ssr": "0.12.5",
     "@supabase/supabase-js": "2.114.0",
     "next": "15.5.25",
+    "noto-sans-cjk-jp": "^1.0.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zod": "4.5.4"

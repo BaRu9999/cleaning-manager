@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { assertAdmin, assertMember } from "@/lib/auth/guard";
-import { jstDateString, jstDateTimeToInstant } from "@/lib/date/jst";
+import { assertAdmin, assertMember, ForbiddenError } from "@/lib/auth/guard";
+import { addDays, jstDateString, jstDateTimeToInstant } from "@/lib/date/jst";
 import { resolveDueTime } from "@/lib/cleaning/slots";
+import { buildCarryOverRow, willRecurNaturally } from "@/lib/cleaning/carry-over";
 import { getStoreSettings } from "./settings";
-import { TIME_SLOTS } from "@/config/constants";
-import type { LogAction } from "@/lib/types/domain";
+import { SKIP_REASON_CODES, TIME_SLOTS } from "@/config/constants";
+import type { LogAction, PhotoRequirement, Priority, TimeSlotKey } from "@/lib/types/domain";
 import { fail, ok, toMessage, type ActionResult } from "./result";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -22,12 +23,29 @@ interface TaskRow {
   master_name: string;
   photo_requirement: string;
   task_date: string;
+  assignee_id: string | null;
+  area_id: string | null;
+  area_label: string | null;
+  category_id: string | null;
+  category_label: string | null;
+  time_slot: string;
+  fixed_time: string | null;
+  due_at: string | null;
+  position: string | null;
+  priority: string;
+  estimated_minutes: number | null;
+  notes: string | null;
 }
+
+const TASK_ROW_SELECT =
+  "id, status, was_overdue, master_id, master_name, photo_requirement, task_date, " +
+  "assignee_id, area_id, area_label, category_id, category_label, time_slot, fixed_time, " +
+  "due_at, position, priority, estimated_minutes, notes";
 
 async function loadTask(supabase: DB, id: string): Promise<TaskRow | null> {
   const { data } = await supabase
     .from("cleaning_tasks")
-    .select("id, status, was_overdue, master_id, master_name, photo_requirement, task_date")
+    .select(TASK_ROW_SELECT)
     .eq("id", id)
     .maybeSingle();
   return (data as TaskRow | null) ?? null;
@@ -150,27 +168,135 @@ export async function completeTaskAction(
 // ---------------------------------------------------------------------------
 // スキップ（管理者）
 // ---------------------------------------------------------------------------
+const skipSchema = z.object({
+  reasonCode: z.enum(SKIP_REASON_CODES),
+  note: z.string().trim().max(500).optional().default(""),
+  carryOver: z.boolean().optional().default(false),
+});
+
+export interface SkipTaskInput {
+  reasonCode: (typeof SKIP_REASON_CODES)[number];
+  note?: string;
+  /** 翌日に繰り越すか */
+  carryOver?: boolean;
+}
+
+export interface SkipTaskResult {
+  carriedOver: boolean;
+  /** 通常スケジュールで翌日も自然に発生するため繰越タスクを作らなかった場合のメッセージ */
+  note?: string;
+}
+
+/**
+ * 実施不可として記録する。管理者、または本人が担当するタスクに限りスタッフ本人も実行できる。
+ * carryOver=true の場合、翌日の通常スケジュールで同じ清掃が発生しない時に限り繰越タスクを作る
+ * （二重発生の防止）。
+ */
 export async function skipTaskAction(
   taskId: string,
-  reason: string,
-): Promise<ActionResult> {
+  input: SkipTaskInput,
+): Promise<ActionResult<SkipTaskResult>> {
   try {
-    const me = await assertAdmin();
-    const trimmed = reason.trim();
-    if (!trimmed) return fail("スキップ理由を入力してください");
+    const me = await assertMember();
+    const parsed = skipSchema.safeParse(input);
+    if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "入力エラー");
+    const { reasonCode, note, carryOver } = parsed.data;
+
     const supabase = await createClient();
     const task = await loadTask(supabase, taskId);
     if (!task) return fail("タスクが見つかりません");
+    if (me.role !== "admin" && task.assignee_id !== me.id) {
+      throw new ForbiddenError("自分の担当タスクのみ操作できます");
+    }
+    if (task.status === "done") return fail("すでに完了しています");
+    if (task.status === "skipped") return fail("すでにスキップ済みです");
+
+    const reasonLabel = SKIP_REASON_CODES.includes(reasonCode) ? reasonCode : "other";
+    const fullReason = note ? `${reasonLabel}: ${note}` : reasonLabel;
 
     const { error } = await supabase
       .from("cleaning_tasks")
-      .update({ status: "skipped", skip_reason: trimmed })
+      .update({ status: "skipped", skip_reason: fullReason, skip_reason_code: reasonCode })
       .eq("id", taskId);
     if (error) return fail(error.message);
-    await writeLog(supabase, task, "skip", "skipped", me.id, { comment: trimmed });
+    await writeLog(supabase, task, "skip", "skipped", me.id, { comment: fullReason });
+
+    let carriedOver = false;
+    let resultNote: string | undefined;
+
+    if (carryOver) {
+      const nextDate = addDays(task.task_date, 1);
+      let recursNaturally = false;
+      if (task.master_id) {
+        const { data: schedules } = await supabase
+          .from("cleaning_schedules")
+          .select("active, frequency, weekdays, days_of_month, interval_days, anchor_date")
+          .eq("master_id", task.master_id);
+        recursNaturally = willRecurNaturally(
+          (schedules ?? []).map((s) => ({
+            active: s.active !== false,
+            rule: {
+              frequency: s.frequency,
+              weekdays: Array.isArray(s.weekdays) ? s.weekdays : [],
+              daysOfMonth: Array.isArray(s.days_of_month) ? s.days_of_month : [],
+              intervalDays: s.interval_days ?? null,
+              anchorDate: s.anchor_date ?? null,
+            },
+          })),
+          nextDate,
+        );
+      }
+
+      if (recursNaturally) {
+        resultNote = "翌日も通常予定のため、繰越タスクは作成しませんでした。";
+      } else {
+        const row = buildCarryOverRow(
+          {
+            id: task.id,
+            masterId: task.master_id,
+            masterName: task.master_name,
+            areaId: task.area_id,
+            areaLabel: task.area_label,
+            categoryId: task.category_id,
+            categoryLabel: task.category_label,
+            timeSlot: task.time_slot as TimeSlotKey,
+            fixedTime: task.fixed_time,
+            dueAt: task.due_at,
+            position: task.position,
+            assigneeId: task.assignee_id,
+            photoRequirement: task.photo_requirement as PhotoRequirement,
+            priority: task.priority as Priority,
+            estimatedMinutes: task.estimated_minutes,
+            notes: task.notes,
+          },
+          nextDate,
+        );
+        const { data: created, error: cErr } = await supabase
+          .from("cleaning_tasks")
+          .insert(row)
+          .select("id")
+          .single();
+        if (cErr || !created) {
+          return fail(`繰越タスクの作成に失敗しました: ${cErr?.message ?? ""}`);
+        }
+        await supabase.from("cleaning_logs").insert({
+          task_id: created.id,
+          master_id: task.master_id,
+          master_name: task.master_name,
+          task_date: nextDate,
+          action: "carry_over",
+          status_after: "pending",
+          actor_id: me.id,
+          comment: `前日（${task.task_date}）の実施不可により繰越`,
+        });
+        carriedOver = true;
+      }
+    }
+
     revalidateTaskViews(taskId);
-    return ok();
+    return ok({ carriedOver, note: resultNote });
   } catch (e) {
+    if (e instanceof ForbiddenError) return fail(e.message);
     return fail(toMessage(e));
   }
 }
