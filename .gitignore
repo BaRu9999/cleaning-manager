@@ -32,3 +32,6 @@ yarn-error.log*
 # testing
 /coverage
 .env*
+
+# supabase CLI local cache
+/supabase/.temp

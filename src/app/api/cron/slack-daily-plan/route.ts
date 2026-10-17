@@ -1,7 +1,9 @@
 /**
- * 「本日の清掃予定」を Slack へ投稿する Cron。
+ * 朝の「本日の清掃予定」を Slack へ投稿する Cron（店舗全体 / 1チャンネル）。
  * 実行: Vercel Cron "0 23 * * *"（= JST 08:00）。
  * 認証: Authorization: Bearer ${CRON_SECRET}
+ *
+ * スタッフへの役職別 LINE 個別通知は /api/cron/line-morning（既定 09:30）で行う。
  *
  * クエリ: dry=1（送信しない） / force=1（二重送信ガード無視） / date=YYYY-MM-DD
  */
@@ -35,15 +37,15 @@ async function handle(request: Request): Promise<Response> {
   try {
     const admin = createAdminClient();
     const settings = await getNotificationSettingsAdmin();
+    const store = await getStoreSettingsAdmin();
 
     if (!settings.slackEnabled || !settings.notifyDailyPlan || !settings.slackWebhookUrl) {
       return NextResponse.json({ ok: true, skipped: "disabled", date });
     }
-    if (!force && settings.lastDailyPlanOn === date) {
+    if (!force && !dry && settings.lastDailyPlanOn === date) {
       return NextResponse.json({ ok: true, skipped: "already_posted", date });
     }
 
-    const store = await getStoreSettingsAdmin();
     // 00:05 の生成が失敗していても 8:00 で埋める（冪等）
     await runGeneration(admin, date, store.timeSlots).catch(() => undefined);
     const tasks = (await loadDateTasksAdmin(admin, date)).filter(
@@ -64,7 +66,7 @@ async function handle(request: Request): Promise<Response> {
     if (!dry) {
       await postToSlackWebhook(settings.slackWebhookUrl, message);
       await admin
-        .from("notification_settings")
+        .from("cleaning_notification_settings")
         .update({ last_daily_plan_on: date })
         .eq("id", 1);
     }
