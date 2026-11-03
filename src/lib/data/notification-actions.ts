@@ -155,6 +155,7 @@ export async function updateLineSettingsAction(
       })
       .eq("id", 1);
     if (error) return fail(`保存に失敗しました: ${error.message}`);
+    if (!data) return fail("清掃の通知設定が見つかりません。管理者に設定の初期化を依頼してください。");
     revalidatePath("/admin/notifications");
     return ok();
   } catch (e) {
