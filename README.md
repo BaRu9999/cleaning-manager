@@ -59,7 +59,7 @@ src/
     auth/guard.ts      requireMember / requireAdmin / assertAdmin
     date/jst.ts        JST 日付ユーティリティ
     supabase/          server / client / middleware / admin
-supabase/migrations/   0001_init.sql / 0002_storage.sql / 0003_cleaning_notification_settings.sql
+supabase/migrations/   0001_init.sql 〜 0009_carry_over_unique.sql（詳細は §11）
 scripts/               seed.ts / set-admin.ts
 docs/DESIGN.md         設計ドキュメント
 ```
@@ -69,10 +69,9 @@ docs/DESIGN.md         設計ドキュメント
 ## 3. Supabase 設定
 
 1. [supabase.com](https://supabase.com) でプロジェクトを作成。
-2. **SQL Editor** で以下を順に実行:
-   1. `supabase/migrations/0001_init.sql` … テーブル / インデックス / 外部キー / トリガー / RLS / 初期カテゴリー・清掃場所
-   2. `supabase/migrations/0002_storage.sql` … `cleaning-photos` バケット（非公開）と Storage RLS
-   3. `supabase/migrations/0003_cleaning_notification_settings.sql` … 清掃専用の通知設定・RLS
+2. **SQL Editor** で `supabase/migrations/` 内のファイルを **番号順に（0001 → 0009）すべて**実行
+   （各ファイルの内容は §11「データモデル」参照。冪等・非破壊のため、新規プロジェクトでも
+   既存プロジェクトの更新でも同じ手順です）。
 3. **Project Settings → API** から URL / anon key / service_role key を控える（→ 環境変数へ）。
 4. **Authentication → Providers → Email** を有効化。動作確認だけならメール確認を無効化しておくと楽です。
 
@@ -98,7 +97,8 @@ docs/DESIGN.md         設計ドキュメント
 | `cleaning_logs` | 在籍メンバー | 追加=本人（`actor_id = auth.uid()`）、削除=管理者、更新不可 |
 | `cleaning_photos` | 在籍メンバー | 追加=本人、削除=管理者 or アップロード者 |
 | `store_settings` | 在籍メンバー | 管理者のみ |
-| `cleaning_notification_settings` | 管理者のみ（Webhook URL を含むため） | 管理者のみ |
+| `cleaning_notification_settings` | 管理者のみ（Webhook URL を含むため） | 管理者のみ（清掃専用。Slack関連） |
+| `notification_settings` | 管理者のみ | 管理者のみ（他システムと共有の可能性あり。清掃は LINE 関連 `line_*` のみ使用、§5-B） |
 | Storage `cleaning-photos` | 在籍メンバー（署名付きURLで表示） | 追加=在籍メンバー、削除=管理者 or 所有者 |
 
 Cron は Cookie セッションを持たないため **service_role（`createAdminClient`）** で RLS を跨ぎます。
@@ -425,7 +425,7 @@ npm run set-admin -- you@example.com   # 管理者作成 / 復旧
 
 ## 9. 本番デプロイ方法
 
-1. Supabase 本番プロジェクトで `0001_init.sql` → `0002_storage.sql` → `0003_cleaning_notification_settings.sql` を実行。
+1. Supabase 本番プロジェクトで `supabase/migrations/` を番号順に（0001 → 0009）すべて実行。
 2. GitHub に push → Vercel に import。
 3. Vercel の環境変数を設定（`CRON_SECRET` を含む）。
 4. Deploy。
@@ -505,26 +505,3 @@ npm run set-admin -- you@example.com   # 管理者作成 / 復旧
 LINE 通知 / 複数店舗管理 / NFC・QR 清掃 / AI による清掃漏れ分析・スケジュール提案 /
 衛生点検・温度管理・HACCP / OJT 連携。純関数（頻度・集計・Slack 文面）は無改修で流用できます。
 複数店舗化は全テーブルへ `store_id` を追加し `is_store_member(store_id)` へ RLS を差し替える設計です。
-
-## 13. 棚卸しと清掃の Slack 設定の分離（既存環境の更新）
-
-同じ Supabase を利用するアプリが `notification_settings` の `id=1` を共用すると、
-Webhook URL と通知の有効/無効を上書きし合います。清掃側は追加マイグレーションで
-`cleaning_notification_settings` に独立させます。棚卸し側の変更は不要です。
-
-1. Preview DB で `supabase/migrations/0003_cleaning_notification_settings.sql` を実行。
-2. この変更を含む清掃アプリを Preview にデプロイ。
-3. 清掃の「Slack通知設定」で清掃用 URL と通知の有効/無効を登録。
-   共有されていた URL は用途を断定できないためコピーしません。登録まで清掃通知は停止します。
-   清掃の通知種別と最終送信日は引き継ぎます。
-4. 清掃の URL を変更・削除・無効化しても棚卸し側が変わらず、逆方向も同様であることを確認。
-   テスト送信は実際に Slack に投稿するため、確認済みの送信先で別途実施してください。
-5. 本番反映時も **DB → 清掃アプリ → 清掃用 URL の登録・有効化** の順で実施。
-   既に棚卸し側の URL が上書きされていた場合、棚卸し側で正しい URL を登録し直してください。
-
-旧 `notification_settings` の行・テーブル・RLS は変更・削除しません。
-新テーブルは管理者のみ読み書き可能で、Cron は従来どおり service_role でアクセスします。
-新テーブルが未作成・未設定でも旧テーブルへのフォールバックはしません。
-SQL の再実行で清掃側の登録済み URL を上書きすることはありません。
-アプリだけ旧版へ戻すと共有設定に再接続するため、ロールバック時は清掃側の通知と設定変更を
-停止してから戻してください。旧テーブルや棚卸し側を削除・初期化しないでください。
