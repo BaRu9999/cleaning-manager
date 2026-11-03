@@ -354,7 +354,7 @@ env は **import 時ではなく使用時に検証**します（`src/lib/env.ts`
 
 | パス | スケジュール(UTC) | JST | 役割 |
 |---|---|---|---|
-| `/api/cron/generate-tasks` | `5 15 * * *` | 00:05 | 当日タスク生成（`cleaning_master`/`cleaning_schedules` → `cleaning_tasks`。冪等）＋続けて自動割当（下記） |
+| `/api/cron/generate-tasks` | `5 15 * * *` | 00:05 | 当日タスク生成（`cleaning_master`/`cleaning_schedules` → `cleaning_tasks`。冪等）＋前日未実施の自動繰越＋続けて自動割当（下記） |
 | `/api/cron/check-overdue` | `0,30 * * * *` | 毎時0/30分 | 期限超過へ遷移 ＋ 未実施 Slack 通知（店舗全体・1チャンネル） |
 | `/api/cron/line-morning` | `0,30 * * * *` | `line_morning_time`(既定09:30)±15分 | **朝の清掃予定通知**。staff=自分の担当（Flex）／リーダー・店長=全体スケジュール |
 | `/api/cron/line-progress` | `0,30 * * * *` | `line_progress_times`(既定17:00)±15分 | **途中進捗通知**。予定/完了/未実施/完了率 ＋ 未実施一覧（担当・期限） |
@@ -369,6 +369,14 @@ env は **import 時ではなく使用時に検証**します（`src/lib/env.ts`
   月まとめてシフトを取り込んでおけば、当日分は毎晩自動で「出勤登録 → タスク生成 → 自動割当」
   まで完了し、`/admin/assignments` で手動の「自動割当」ボタンを押す必要はなくなります
   （固定担当・ロック済みタスクは維持。同じロジックを手動割当ボタンとも共有）。
+- **前日未実施の自動繰越**: タスク生成の直後・自動割当の前に `runAutoCarryOver()`
+  （`src/lib/cleaning/run-carry-over.ts`）が、前日 `pending`/`overdue` のまま残っていた
+  （＝実施不可として記録もされず、単に未完了だった）タスクを当日へ自動で繰り越します。
+  翌日の通常スケジュールで同じ清掃項目が自然に発生する場合は重複生成しません。管理者が
+  明示的に「実施不可」として記録した（`status='skipped'`）タスクは対象外です（既存の
+  実施不可フォームの「翌日に繰り越す」チェックで個別に判断済みのため）。繰り越されたタスクは
+  通常のタスクと同じく一覧に「前日から繰越」バッジ付きで表示され、直後の自動割当で
+  その日出勤しているスタッフへ割り振られます。
 - 認証: `Authorization: Bearer ${CRON_SECRET}`。未設定・不一致は **401**。認証なしでは実行できません（`?key=<CRON_SECRET>` でも可）。
 - すべて **Asia/Tokyo 基準**で処理します（`src/lib/date/jst.ts`）。
 - 手動テスト:
@@ -472,6 +480,10 @@ npm run set-admin -- you@example.com   # 管理者作成 / 復旧
   清掃側のSlack Webhook保存が他システムの設定を上書きしてしまう問題を解消するための分離
   （詳細は README §5「Slack設定」）。旧 `notification_settings` テーブルは変更しない
   （LINE関連の `line_*` 列は清掃専用のため、引き続きそちらに残る）
+- `0009_carry_over_unique.sql`: `cleaning_tasks.origin_task_id` を UNIQUE INDEX 化
+  （既存の非ユニーク部分インデックスを置き換え）。前日未実施タスクの自動繰越
+  （`generate-tasks` Cron、詳細は §7）が同日に再実行されても二重に繰越タスクを
+  作らないための制約。既存データは変更しない
 
 - 1店舗運用。設定（`store_settings` / `notification_settings` / `cleaning_notification_settings`）
   は `id = 1` のシングルトン行。

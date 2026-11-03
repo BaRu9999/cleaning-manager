@@ -173,13 +173,17 @@ describe("Slack設定の分離（清掃 / 棚卸し）", () => {
   ] as const)(
     "%s Cronは清掃のWebhookへ送信し、送信済み日時は清掃専用テーブルにのみ記録する",
     async (_name, handler, column) => {
+      // at=12:00: closing は line_closing_time(23:00) との時刻窓判定があるため、
+      // 実行時刻に関わらずLINE分岐（notification_settings への別書き込み）が
+      // 発火しないよう固定する（daily 側は at を見ないため無害）。
+      const url = "https://example.test/api/cron?at=12:00";
       const inventorySnapshot = { ...state.rows.notification_settings };
-      await handler(new Request("https://example.test/api/cron"));
+      await handler(new Request(url));
       expect(state.postSlack).toHaveBeenCalledWith(cleaningUrl, expect.any(Object));
       expect(state.rows.cleaning_notification_settings?.[column]).toBe("2026-10-17");
       expect(state.rows.notification_settings).toEqual(inventorySnapshot);
 
-      await handler(new Request("https://example.test/api/cron"));
+      await handler(new Request(url));
       expect(state.postSlack).toHaveBeenCalledTimes(1); // 二重送信ガード
     },
   );

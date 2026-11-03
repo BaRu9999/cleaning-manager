@@ -266,6 +266,29 @@ Webhook URLを保存した瞬間に他システムの設定まで書き換わっ
 - 回帰テスト: `src/lib/data/notification-isolation.test.ts`
   （清掃のSlack設定変更が他システムの行に影響しないこと、LINE設定が引き続き動くことを確認）。
 
+## 9-E. 未実施タスクの繰越（手動・自動）
+
+「前日できなかった清掃」を翌日のタスクに引き継ぐ仕組み。純ロジックは
+`src/lib/cleaning/carry-over.ts`（`willRecurNaturally` / `buildCarryOverRow`）、
+実行本体（DB I/O）は `src/lib/cleaning/run-carry-over.ts` に集約し、手動・自動の両方から使う。
+
+- **手動（実施不可オプトイン）**: `/today/[taskId]` の「実施不可」フォームで「翌日に繰り越す」に
+  チェックすると、`skipTaskAction`（`task-actions.ts`）が `carryOverOneTask()` を呼ぶ。
+- **自動（日次生成Cron、今回追加）**: `generate-tasks` Cron（毎日00:05、タスク生成の直後・
+  自動割当の前）が `runAutoCarryOver()` を呼び、**前日 `pending`/`overdue` のまま残っていた
+  タスク**（＝誰も実施不可として記録しなかった「単に忘れられた」タスク）を自動で当日へ繰り越す。
+  実施不可として記録済み（`status='skipped'`）のものは対象外（スタッフ・管理者が明示的に
+  判断したものを上書きしない）。
+- 両方とも共通で: 翌日の通常スケジュールで同じ清掃項目が自然に発生する場合は重複生成しない
+  （`willRecurNaturally`）。繰越タスクは `source='manual'`, `origin_task_id`＝元タスクのID,
+  `cleaning_logs` に `action='carry_over'` の1行を追加（手動は実行者ID、自動は `actor_id=null`
+  で記録）。一覧・詳細画面は `origin_task_id` の有無で「前日から繰越」バッジを出すため、
+  自動繰越タスクも追加のUI変更なしで同じ見た目になる。
+- 冪等性: `cleaning_tasks.origin_task_id` に UNIQUE INDEX（migration `0009`）を追加し、
+  Cronが同日に再実行されても同じ元タスクから二重に繰越を作らない（アプリ側の事前チェックと
+  DB制約の二重防御）。担当者は繰り越した後、既存の自動割当（§8）が出勤状況に応じて
+  再配分する（担当を引き継いだ人がその日出勤していなければ別の人に回る）。
+
 ## 10. 分析・ダッシュボード（`src/lib/cleaning/stats.ts` 純関数）
 
 - 完了率（本日/今週/今月）、未実施件数、期限超過件数。

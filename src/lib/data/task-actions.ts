@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertAdmin, assertMember, ForbiddenError } from "@/lib/auth/guard";
 import { addDays, jstDateString, jstDateTimeToInstant } from "@/lib/date/jst";
 import { resolveDueTime } from "@/lib/cleaning/slots";
-import { buildCarryOverRow, willRecurNaturally } from "@/lib/cleaning/carry-over";
+import { carryOverOneTask } from "@/lib/cleaning/run-carry-over";
 import { getStoreSettings } from "./settings";
 import { SKIP_REASON_CODES, TIME_SLOTS } from "@/config/constants";
 import type { LogAction, PhotoRequirement, Priority, TimeSlotKey } from "@/lib/types/domain";
@@ -226,70 +226,33 @@ export async function skipTaskAction(
 
     if (carryOver) {
       const nextDate = addDays(task.task_date, 1);
-      let recursNaturally = false;
-      if (task.master_id) {
-        const { data: schedules } = await supabase
-          .from("cleaning_schedules")
-          .select("active, frequency, weekdays, days_of_month, interval_days, anchor_date")
-          .eq("master_id", task.master_id);
-        recursNaturally = willRecurNaturally(
-          (schedules ?? []).map((s) => ({
-            active: s.active !== false,
-            rule: {
-              frequency: s.frequency,
-              weekdays: Array.isArray(s.weekdays) ? s.weekdays : [],
-              daysOfMonth: Array.isArray(s.days_of_month) ? s.days_of_month : [],
-              intervalDays: s.interval_days ?? null,
-              anchorDate: s.anchor_date ?? null,
-            },
-          })),
-          nextDate,
-        );
-      }
-
-      if (recursNaturally) {
+      const result = await carryOverOneTask(
+        supabase,
+        {
+          id: task.id,
+          masterId: task.master_id,
+          masterName: task.master_name,
+          areaId: task.area_id,
+          areaLabel: task.area_label,
+          categoryId: task.category_id,
+          categoryLabel: task.category_label,
+          timeSlot: task.time_slot as TimeSlotKey,
+          fixedTime: task.fixed_time,
+          dueAt: task.due_at,
+          position: task.position,
+          assigneeId: task.assignee_id,
+          photoRequirement: task.photo_requirement as PhotoRequirement,
+          priority: task.priority as Priority,
+          estimatedMinutes: task.estimated_minutes,
+          notes: task.notes,
+        },
+        nextDate,
+        { actorId: me.id, comment: `前日（${task.task_date}）の実施不可により繰越` },
+      );
+      if (result.skippedNaturalRecur) {
         resultNote = "翌日も通常予定のため、繰越タスクは作成しませんでした。";
       } else {
-        const row = buildCarryOverRow(
-          {
-            id: task.id,
-            masterId: task.master_id,
-            masterName: task.master_name,
-            areaId: task.area_id,
-            areaLabel: task.area_label,
-            categoryId: task.category_id,
-            categoryLabel: task.category_label,
-            timeSlot: task.time_slot as TimeSlotKey,
-            fixedTime: task.fixed_time,
-            dueAt: task.due_at,
-            position: task.position,
-            assigneeId: task.assignee_id,
-            photoRequirement: task.photo_requirement as PhotoRequirement,
-            priority: task.priority as Priority,
-            estimatedMinutes: task.estimated_minutes,
-            notes: task.notes,
-          },
-          nextDate,
-        );
-        const { data: created, error: cErr } = await supabase
-          .from("cleaning_tasks")
-          .insert(row)
-          .select("id")
-          .single();
-        if (cErr || !created) {
-          return fail(`繰越タスクの作成に失敗しました: ${cErr?.message ?? ""}`);
-        }
-        await supabase.from("cleaning_logs").insert({
-          task_id: created.id,
-          master_id: task.master_id,
-          master_name: task.master_name,
-          task_date: nextDate,
-          action: "carry_over",
-          status_after: "pending",
-          actor_id: me.id,
-          comment: `前日（${task.task_date}）の実施不可により繰越`,
-        });
-        carriedOver = true;
+        carriedOver = result.carried;
       }
     }
 
