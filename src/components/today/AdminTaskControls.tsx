@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TaskStatus } from "@/config/constants";
-import { reopenTaskAction, skipTaskAction } from "@/lib/data/task-actions";
+import { reopenTaskAction } from "@/lib/data/task-actions";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
-import { TextInput } from "@/components/ui/Field";
+import { SkipTaskForm } from "./SkipTaskForm";
 
 export function AdminTaskControls({
   taskId,
@@ -17,7 +17,6 @@ export function AdminTaskControls({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showSkip, setShowSkip] = useState(false);
 
@@ -36,7 +35,7 @@ export function AdminTaskControls({
       <div className="flex flex-wrap gap-2">
         {status !== "skipped" && status !== "done" ? (
           <Button size="sm" variant="secondary" onClick={() => setShowSkip((v) => !v)}>
-            スキップ
+            実施不可
           </Button>
         ) : null}
         {status === "done" || status === "skipped" ? (
@@ -52,25 +51,8 @@ export function AdminTaskControls({
       </div>
 
       {showSkip ? (
-        <div className="mt-2 flex gap-2">
-          <TextInput
-            placeholder="スキップ理由（必須）"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-          <Button
-            size="sm"
-            onClick={() =>
-              run(async () => {
-                const r = await skipTaskAction(taskId, reason);
-                if (r.ok) setShowSkip(false);
-                return r;
-              })
-            }
-            disabled={pending || !reason.trim()}
-          >
-            確定
-          </Button>
+        <div className="mt-2">
+          <SkipTaskForm taskId={taskId} onDone={() => setShowSkip(false)} />
         </div>
       ) : null}
 

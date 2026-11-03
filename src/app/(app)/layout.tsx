@@ -28,6 +28,7 @@ export default async function AppLayout({
   return (
     <AppShell
       role={profile.role}
+      jobTitle={profile.jobTitle}
       displayName={profile.displayName}
       storeName={store.storeName}
     >

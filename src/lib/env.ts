@@ -72,7 +72,70 @@ export function getSlackWebhookFromEnv(): string | null {
   return nonEmpty(value) ? value : null;
 }
 
+/**
+ * LINE Messaging API の設定。env を優先し、無ければ引数の DB 値を使う。
+ * どちらも無ければ null（LINE 通知は無効）。
+ */
+export function resolveLineConfig(dbFallback?: {
+  accessToken?: string | null;
+  channelSecret?: string | null;
+}): { accessToken: string; channelSecret: string | null } | null {
+  const accessToken =
+    (nonEmpty(process.env.LINE_CHANNEL_ACCESS_TOKEN)
+      ? process.env.LINE_CHANNEL_ACCESS_TOKEN
+      : null) ??
+    (dbFallback?.accessToken && dbFallback.accessToken.trim()
+      ? dbFallback.accessToken.trim()
+      : null);
+  if (!accessToken) return null;
+  const channelSecret =
+    (nonEmpty(process.env.LINE_CHANNEL_SECRET)
+      ? (process.env.LINE_CHANNEL_SECRET as string)
+      : null) ??
+    (dbFallback?.channelSecret && dbFallback.channelSecret.trim()
+      ? dbFallback.channelSecret.trim()
+      : null);
+  return { accessToken, channelSecret };
+}
+
 export function getSiteUrl(): string {
   const value = process.env.NEXT_PUBLIC_SITE_URL;
   return nonEmpty(value) ? value.replace(/\/$/, "") : "http://localhost:3000";
+}
+
+/** LIFF ID（公開。ブラウザの LIFF SDK 初期化に使う。静的参照） */
+export function getLiffId(): string | null {
+  const v = process.env.NEXT_PUBLIC_LIFF_ID;
+  return nonEmpty(v) ? v : null;
+}
+
+/**
+ * LINE のトーク/Flex に貼る LIFF ディープリンク。
+ * liff.line.me 経由にすることで LINE アプリ内で LIFF として開き、
+ * getIDToken()/getProfile() が使える（素の https://<site>/liff/... は通常 Webビュー）。
+ *
+ * LIFF ID が未設定なら **null**。呼び出し側で Web アプリ等へフォールバックすること。
+ *
+ * 前提: LIFF アプリのエンドポイント URL は `https://<site>/liff`（プレフィックス）。
+ * すると liff.line.me/<ID>/register → /liff/register、liff.line.me/<ID>/today → /liff/today。
+ */
+export function getLiffLink(path = ""): string | null {
+  const id = process.env.NEXT_PUBLIC_LIFF_ID;
+  if (!nonEmpty(id)) return null;
+  const p = path ? (path.startsWith("/") ? path : `/${path}`) : "";
+  return `https://liff.line.me/${id.trim()}${p}`;
+}
+
+/** LIFF があれば LIFF ディープリンク、無ければ Web アプリ（要ログイン）へ */
+export function getTodayLink(): string {
+  return getLiffLink("/today") ?? `${getSiteUrl()}/today`;
+}
+
+/**
+ * LINE ID トークン検証時に audience（client_id）として渡すチャネル ID。
+ * 未設定なら検証時に aud チェックをスキップ（署名検証は LINE Platform 側で実施）。
+ */
+export function getLineLoginChannelId(): string | null {
+  const v = process.env.LINE_LOGIN_CHANNEL_ID;
+  return nonEmpty(v) ? v : null;
 }

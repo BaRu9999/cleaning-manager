@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/guard";
 import { WEEKDAY_LABELS } from "@/config/constants";
 import { getStatTasks, startOfWeekMon } from "@/lib/data/stats-data";
+import { getTasksForDate } from "@/lib/data/tasks";
+import { getEquipmentIssueOpenCount } from "@/lib/data/equipment-issues";
 import { formatLongJp, jstDateString, startOfMonth } from "@/lib/date/jst";
 import {
   completionByArea,
@@ -10,6 +12,7 @@ import {
   missedByWeekday,
   overallCompletion,
 } from "@/lib/cleaning/stats";
+import { computeStaffWorkload } from "@/lib/cleaning/workload";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Stat } from "@/components/ui/Stat";
@@ -30,7 +33,11 @@ export default async function AdminDashboardPage() {
   const monthStart = startOfMonth(today);
   const rangeFrom = weekStart < monthStart ? weekStart : monthStart;
 
-  const tasks = await getStatTasks(rangeFrom, today);
+  const [tasks, todayFullTasks, equipmentOpenCount] = await Promise.all([
+    getStatTasks(rangeFrom, today),
+    getTasksForDate(today),
+    getEquipmentIssueOpenCount(),
+  ]);
   const todayTasks = tasks.filter((t) => t.taskDate === today);
   const weekTasks = tasks.filter((t) => t.taskDate >= weekStart);
   const monthTasks = tasks.filter((t) => t.taskDate >= monthStart);
@@ -41,6 +48,23 @@ export default async function AdminDashboardPage() {
 
   const todayPending = todayTasks.filter((t) => t.status === "pending").length;
   const todayOverdue = todayTasks.filter((t) => t.status === "overdue").length;
+  const todayInProgress = todayFullTasks.filter((t) => t.status === "in_progress").length;
+  const plannedMinutes = todayFullTasks
+    .filter((t) => t.status !== "skipped")
+    .reduce((s, t) => s + (t.estimatedMinutes ?? 0), 0);
+  const doneActualMinutes = todayFullTasks
+    .filter((t) => t.status === "done")
+    .reduce((s, t) => s + (t.actualMinutes ?? 0), 0);
+  const carriedOverToday = todayFullTasks.filter((t) => t.originTaskId).length;
+  const todayWorkload = computeStaffWorkload(
+    todayFullTasks.map((t) => ({
+      assigneeId: t.assigneeId,
+      assigneeName: t.assigneeName,
+      estimatedMinutes: t.estimatedMinutes,
+      status: t.status,
+    })),
+  );
+  const maxWorkloadMinutes = Math.max(1, ...todayWorkload.map((w) => w.totalMinutes));
 
   const byArea = completionByArea(monthTasks).slice(0, 10);
   const byStaff = implementationByStaff(monthTasks).slice(0, 10);
@@ -65,6 +89,54 @@ export default async function AdminDashboardPage() {
         <Stat label="本日の期限超過" value={todayOverdue} unit="件" tone={todayOverdue > 0 ? "danger" : "good"} />
         <Stat label="今月の未実施" value={monthC.missed} unit="件" tone={monthC.missed > 0 ? "warning" : "good"} />
       </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Stat label="本日 実施中" value={todayInProgress} unit="件" />
+        <Stat label="予定清掃時間" value={plannedMinutes} unit="分" />
+        <Stat label="完了済実績時間" value={doneActualMinutes} unit="分" tone="info" />
+        <Stat
+          label="設備異常"
+          value={equipmentOpenCount}
+          unit="件"
+          tone={equipmentOpenCount > 0 ? "danger" : "good"}
+          sub="未対応"
+        />
+      </div>
+      {carriedOverToday > 0 ? (
+        <Link
+          href="/today"
+          className="block rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800"
+        >
+          繰越清掃 {carriedOverToday}件（前日実施不可分）
+        </Link>
+      ) : null}
+
+      <Card>
+        <CardHeader
+          title="本日のスタッフ負荷"
+          subtitle="推定作業時間の合計。偏りがあれば「出勤・清掃割当」で調整できます。"
+          action={
+            <Link href="/admin/assignments" className="text-xs font-bold text-slate-500 hover:underline">
+              出勤・割当 →
+            </Link>
+          }
+        />
+        <CardBody className="space-y-1.5">
+          {todayWorkload.length === 0 ? (
+            <p className="text-sm text-slate-400">本日の担当割当がまだありません。</p>
+          ) : (
+            todayWorkload.map((w) => (
+              <MiniBar
+                key={w.staffId}
+                label={`${w.staffName}（${w.count}件）`}
+                value={w.totalMinutes}
+                max={maxWorkloadMinutes}
+                suffix="分"
+              />
+            ))
+          )}
+        </CardBody>
+      </Card>
 
       <Card>
         <CardHeader

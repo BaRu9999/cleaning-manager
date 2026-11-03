@@ -137,5 +137,6 @@ function toCardData(t: Awaited<ReturnType<typeof getTodayTasks>>["tasks"][number
     photoCount: t.photoCount,
     completedAt: t.completedAt,
     completedByName: t.completedByName,
+    originTaskId: t.originTaskId,
   };
 }

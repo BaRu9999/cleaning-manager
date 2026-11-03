@@ -8,6 +8,7 @@ import {
 } from "@/config/constants";
 import { describeRule } from "@/lib/cleaning/recurrence";
 import { slotLabel } from "@/lib/cleaning/slots";
+import { formatWorkload } from "@/lib/cleaning/workload";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -96,7 +97,7 @@ export default async function MasterListPage() {
                         {PHOTO_REQUIREMENT_LABELS[m.photoRequirement]}
                       </Badge>
                       {m.estimatedMinutes != null ? (
-                        <Badge tone="neutral">目安{m.estimatedMinutes}分</Badge>
+                        <Badge tone="neutral">{formatWorkload(m.estimatedMinutes)}</Badge>
                       ) : null}
                     </div>
                   </div>

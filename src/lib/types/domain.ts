@@ -4,20 +4,32 @@
  */
 
 import type {
+  CategorySide,
+  EquipmentSeverity,
+  EquipmentStatus,
   Frequency,
+  JobTitle,
+  LineRolePrefs,
   PhotoRequirement,
   Priority,
   Role,
+  SkipReasonCode,
   TaskStatus,
   TimeSlotConfig,
   TimeSlotKey,
 } from "@/config/constants";
 
 export type {
+  CategorySide,
+  EquipmentSeverity,
+  EquipmentStatus,
   Frequency,
+  JobTitle,
+  LineRolePrefs,
   PhotoRequirement,
   Priority,
   Role,
+  SkipReasonCode,
   TaskStatus,
   TimeSlotConfig,
   TimeSlotKey,
@@ -28,16 +40,36 @@ export interface UserProfile {
   email: string | null;
   displayName: string;
   role: Role;
+  jobTitle: JobTitle;
   position: string | null;
   phone: string | null;
   active: boolean;
+  staffCode: string | null;
+  /** null = 全カテゴリー閲覧可 */
+  visibleCategoryIds: string[] | null;
+  /** staff_line_accounts の JOIN で埋まる（無ければ null / false） */
+  lineUserId: string | null;
+  lineLinked: boolean;
+  /** false = シフトCSV連携のみで作成された行（ログイン・LINE通知は利用不可） */
+  hasLogin: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StaffLineAccount {
+  id: string;
+  staffId: string;
+  lineUserId: string;
+  lineDisplayName: string | null;
+  isActive: boolean;
+  registeredAt: string;
+  blockedAt: string | null;
 }
 
 export interface CleaningCategory {
   id: string;
   name: string;
+  side: CategorySide;
   sortOrder: number;
   active: boolean;
 }
@@ -119,6 +151,11 @@ export interface CleaningTask {
   actualMinutes: number | null;
   comment: string | null;
   skipReason: string | null;
+  skipReasonCode: SkipReasonCode | null;
+  /** 管理者/担当者が手動で担当を固定した場合 true。自動割当で上書きしない */
+  assignmentLocked: boolean;
+  /** 前日の実施不可タスクから繰り越された場合、その元タスクの ID */
+  originTaskId: string | null;
   photoCount: number;
   createdAt: string;
   updatedAt: string;
@@ -130,7 +167,8 @@ export type LogAction =
   | "complete"
   | "skip"
   | "reopen"
-  | "uncomplete";
+  | "uncomplete"
+  | "carry_over";
 
 export interface CleaningLog {
   id: string;
@@ -166,6 +204,23 @@ export interface NotificationSettings {
   notifyClosingSummary: boolean;
   lastDailyPlanOn: string | null;
   lastClosingSummaryOn: string | null;
+  // --- LINE ---
+  lineEnabled: boolean;
+  lineChannelAccessToken: string | null;
+  lineChannelSecret: string | null;
+  /** 朝の清掃予定通知の時刻 "HH:MM" */
+  lineMorningTime: string;
+  /** 途中進捗通知の時刻（複数可） */
+  lineProgressTimes: string[];
+  /** 未実施通知（期限前リマインド）の分オフセット。負=前 / 0=時刻 / 正=後 */
+  lineReminderOffsets: number[];
+  /** 閉店後レポートの時刻 "HH:MM" */
+  lineClosingTime: string;
+  /** 役職 × 通知種別（morning/progress/pending/overdue/closing）の受信可否 */
+  lineRolePrefs: LineRolePrefs;
+  lastLineMorningOn: string | null;
+  lastLineProgressAt: string | null;
+  lastLineClosingOn: string | null;
 }
 
 export interface StoreSettings {
@@ -175,4 +230,42 @@ export interface StoreSettings {
   closeTime: string;
   timeSlots: TimeSlotConfig[];
   positions: string[];
+}
+
+/** 当日の出勤スタッフ（清掃自動割当の母集団） */
+export interface DailyStaffing {
+  id: string;
+  workDate: string;
+  userId: string;
+  userName: string;
+  /** 表示用の代表ポジション（先頭の positions、無ければ null） */
+  position: string | null;
+  /** 本日対応できるポジション（複数可。シフト連携の兼務対応） */
+  positions: string[];
+  startTime: string | null;
+  endTime: string | null;
+  availableForCleaning: boolean;
+}
+
+export interface EquipmentIssue {
+  id: string;
+  reportedAt: string;
+  reportedById: string | null;
+  reportedByName: string | null;
+  taskId: string | null;
+  masterId: string | null;
+  masterName: string | null;
+  areaId: string | null;
+  areaName: string | null;
+  title: string;
+  description: string | null;
+  severity: EquipmentSeverity;
+  status: EquipmentStatus;
+  photoPath: string | null;
+  photoSignedUrl?: string | null;
+  resolvedAt: string | null;
+  resolvedById: string | null;
+  resolvedByName: string | null;
+  resolutionNote: string | null;
+  createdAt: string;
 }

@@ -10,6 +10,7 @@ import {
   type TaskStatus,
 } from "@/config/constants";
 import { createClient } from "@/lib/supabase/client";
+import { resizeImage } from "@/lib/media/resizeImage";
 import {
   attachPhotoAction,
   completeTaskAction,
@@ -19,6 +20,8 @@ import {
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Field, Textarea, TextInput } from "@/components/ui/Field";
+import { SkipTaskForm } from "./SkipTaskForm";
+import { ReportEquipmentIssueForm } from "./ReportEquipmentIssueForm";
 
 interface PhotoItem {
   id: string;
@@ -40,6 +43,9 @@ export function CompleteForm({
   photoRequirement,
   initialPhotos,
   canOperate,
+  masterId,
+  areaId,
+  masterName,
 }: {
   taskId: string;
   taskDate: string;
@@ -47,6 +53,9 @@ export function CompleteForm({
   photoRequirement: PhotoRequirement;
   initialPhotos: PhotoItem[];
   canOperate: boolean;
+  masterId?: string | null;
+  areaId?: string | null;
+  masterName?: string;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -56,6 +65,8 @@ export function CompleteForm({
   const [photos, setPhotos] = useState<PhotoItem[]>(initialPhotos);
   const [comment, setComment] = useState("");
   const [minutes, setMinutes] = useState("");
+  const [showSkip, setShowSkip] = useState(false);
+  const [showIssue, setShowIssue] = useState(false);
 
   const needPhoto = photoRequirement === "required" && photos.length === 0;
 
@@ -72,35 +83,50 @@ export function CompleteForm({
     try {
       const supabase = createClient();
       for (const file of files) {
-        if (file.size > MAX_PHOTO_BYTES) {
+        let resized: File;
+        try {
+          resized = await resizeImage(file);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : `「${file.name}」を処理できませんでした`);
+          continue;
+        }
+        if (resized.size > MAX_PHOTO_BYTES) {
           setError(`「${file.name}」が大きすぎます（10MBまで）`);
           continue;
         }
-        const ext = EXT[file.type] ?? "jpg";
+        const ext = EXT[resized.type] ?? "jpg";
         const path = `${taskDate}/${taskId}/${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from(PHOTO_BUCKET)
-          .upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
-        if (upErr) {
-          setError(`アップロードに失敗しました: ${upErr.message}`);
-          continue;
+        try {
+          const { error: upErr } = await supabase.storage
+            .from(PHOTO_BUCKET)
+            .upload(path, resized, { contentType: resized.type || "image/jpeg", upsert: false });
+          if (upErr) {
+            setError(`アップロードに失敗しました: ${upErr.message}`);
+            continue;
+          }
+          const res = await attachPhotoAction({
+            taskId,
+            storagePath: path,
+            bytes: resized.size,
+          });
+          if (!res.ok) {
+            setError(res.error);
+            continue;
+          }
+          const { data: signed } = await supabase.storage
+            .from(PHOTO_BUCKET)
+            .createSignedUrl(path, 3600);
+          setPhotos((p) => [
+            ...p,
+            { id: res.data.id, signedUrl: signed?.signedUrl ?? null },
+          ]);
+        } catch (e) {
+          setError(
+            e instanceof Error
+              ? `アップロードに失敗しました（通信エラー）: ${e.message}`
+              : "アップロードに失敗しました（通信エラー）。電波の良い場所でもう一度お試しください。",
+          );
         }
-        const res = await attachPhotoAction({
-          taskId,
-          storagePath: path,
-          bytes: file.size,
-        });
-        if (!res.ok) {
-          setError(res.error);
-          continue;
-        }
-        const { data: signed } = await supabase.storage
-          .from(PHOTO_BUCKET)
-          .createSignedUrl(path, 3600);
-        setPhotos((p) => [
-          ...p,
-          { id: res.data.id, signedUrl: signed?.signedUrl ?? null },
-        ]);
       }
     } finally {
       setUploading(false);
@@ -185,7 +211,6 @@ export function CompleteForm({
               ref={fileRef}
               type="file"
               accept="image/*"
-              capture="environment"
               multiple
               className="hidden"
               onChange={onPickFiles}
@@ -195,7 +220,7 @@ export function CompleteForm({
               onClick={() => fileRef.current?.click()}
               disabled={uploading || pending}
             >
-              {uploading ? "アップロード中…" : "カメラ / 写真を追加"}
+              {uploading ? "アップロード中…" : "写真を撮影 / 選択"}
             </Button>
           </div>
         ) : null}
@@ -227,6 +252,35 @@ export function CompleteForm({
       >
         {pending ? "処理中…" : "完了する"}
       </Button>
+
+      <div className="flex gap-2 border-t border-slate-100 pt-3">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="flex-1"
+          onClick={() => setShowSkip((v) => !v)}
+        >
+          実施不可
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="flex-1"
+          onClick={() => setShowIssue((v) => !v)}
+        >
+          設備異常を報告
+        </Button>
+      </div>
+      {showSkip ? <SkipTaskForm taskId={taskId} onDone={() => setShowSkip(false)} /> : null}
+      {showIssue ? (
+        <ReportEquipmentIssueForm
+          taskId={taskId}
+          masterId={masterId}
+          areaId={areaId}
+          defaultTitle={masterName ? `${masterName}の設備で異常` : undefined}
+          onDone={() => setShowIssue(false)}
+        />
+      ) : null}
     </div>
   );
 }
