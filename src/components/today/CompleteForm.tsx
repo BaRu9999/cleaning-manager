@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useOptimistic, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   MAX_PHOTOS_PER_TASK,
@@ -67,6 +67,9 @@ export function CompleteForm({
   const [minutes, setMinutes] = useState("");
   const [showSkip, setShowSkip] = useState(false);
   const [showIssue, setShowIssue] = useState(false);
+  // 「清掃開始」クリック直後に完了ボタン側へ即切替（失敗時は自動でstatusへ戻る＝ロールバック）。
+  // ヘッダーの状態バッジ・操作履歴はrefresh後の実データを待つ（このフォームの表示のみ即時反映）。
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(status);
 
   const needPhoto = photoRequirement === "required" && photos.length === 0;
 
@@ -148,6 +151,7 @@ export function CompleteForm({
   function start() {
     setError(null);
     startTransition(async () => {
+      setOptimisticStatus("in_progress");
       const res = await startTaskAction(taskId);
       if (!res.ok) setError(res.error);
       else router.refresh();
@@ -187,7 +191,7 @@ export function CompleteForm({
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-      {status !== "in_progress" ? (
+      {optimisticStatus !== "in_progress" ? (
         <Button size="lg" onClick={start} disabled={pending}>
           清掃開始
         </Button>
