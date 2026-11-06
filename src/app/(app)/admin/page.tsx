@@ -56,6 +56,7 @@ export default async function AdminDashboardPage() {
     .filter((t) => t.status === "done")
     .reduce((s, t) => s + (t.actualMinutes ?? 0), 0);
   const carriedOverToday = todayFullTasks.filter((t) => t.originTaskId).length;
+  const pulledForwardToday = todayFullTasks.filter((t) => t.fulfilledByTaskId).length;
   const todayWorkload = computeStaffWorkload(
     todayFullTasks.map((t) => ({
       assigneeId: t.assigneeId,
@@ -108,6 +109,14 @@ export default async function AdminDashboardPage() {
           className="block rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800"
         >
           繰越清掃 {carriedOverToday}件（前日実施不可分）
+        </Link>
+      ) : null}
+      {pulledForwardToday > 0 ? (
+        <Link
+          href="/today"
+          className="block rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-bold text-violet-800"
+        >
+          前倒し消化 {pulledForwardToday}件（予定日より前に実施済みのため自動完了）
         </Link>
       ) : null}
 

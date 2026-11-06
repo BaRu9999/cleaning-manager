@@ -289,6 +289,32 @@ Webhook URLを保存した瞬間に他システムの設定まで書き換わっ
   DB制約の二重防御）。担当者は繰り越した後、既存の自動割当（§8）が出勤状況に応じて
   再配分する（担当を引き継いだ人がその日出勤していなければ別の人に回る）。
 
+## 9-F. 前倒し消化（`src/lib/cleaning/pull-forward.ts`）
+
+「本来の予定日より前に同じ清掃項目を実施済みなら、その回の予定タスクは免除する」仕組み。
+§9-E（繰越＝未完了を未来へ）の逆方向（未来の予定を今回分で前倒しに免除）に相当する。
+純ロジックは `pull-forward.ts`（`isPullForwardEligible` / `findPreviousOccurrence` /
+`findFulfillment` / `applyFulfillment`）、DB I/O は `run-generation.ts`（`runGeneration` 内に
+直接組み込み。別の実行本体ファイルには分けていない）。
+
+- **対象**: `cleaning_schedules.frequency` が `daily`・`manual` 以外（`interval`・`weekly`・
+  `biweekly`・`monthly`・`monthly_twice`・`day_of_month`・`weekday`）。毎日は「前倒し」の概念が
+  無いため対象外。
+- **判定**: 当日 `date` に生成予定の (master, schedule) ごとに、直前の発生日
+  `previousOccurrence`（`findPreviousOccurrence`、純関数・DB不要）を求める。見つからない場合
+  （スケジュールの初回発生など）は前倒し判定そのものを行わない（安全側）。見つかった場合、
+  同じ `master_id` で `previousOccurrence`（除外）〜`date`（除外）の間に `status='done'` の
+  タスクがあれば、その中で最新のものを充足元とする（`findFulfillment`）。
+- **生成**: 充足元があるタスクは、生成はするが最初から `status='done'`・`completed_at`/
+  `completed_by`＝充足元のもの・`comment`＝「前倒し消化（YYYY-MM-DD 実施分で充足）」・
+  `fulfilled_by_task_id`＝充足元タスクのID として記録する（`applyFulfillment`）。
+  `cleaning_logs` に `action='fulfilled_early'`（`actor_id=null`）の1行も追加する。
+- 一覧・詳細画面は `fulfilled_by_task_id` の有無で「前倒し消化済み」バッジを出す
+  （`origin_task_id`＝繰越バッジとは別の見た目・別の列。両方は同時に成立しない）。
+- 自己収束: 前倒しで免除された回自体が「次回のための基準日」になるため、1回の早期実施が
+  2回以上先の予定まで連鎖して免除することはない。
+- `getTasksForDate`/`getTask` は `select("*")` のため追加のクエリ変更は不要。
+
 ## 10. 分析・ダッシュボード（`src/lib/cleaning/stats.ts` 純関数）
 
 - 完了率（本日/今週/今月）、未実施件数、期限超過件数。

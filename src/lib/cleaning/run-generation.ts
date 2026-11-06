@@ -2,6 +2,10 @@
  * 当日タスク生成の実行本体。Cron（service_role クライアント）と
  * 管理者の手動再生成（RLS クライアント）の両方から呼ぶ。
  * 冪等: 同じ (master, schedule, 日付) の auto タスクは二重生成しない。
+ *
+ * 前倒し消化: 生成対象のうち「毎日」以外の定期スケジュールで、直前の発生日より後・
+ * 今回の予定日より前に同じ清掃項目（master_id）が完了済みなら、今回分は生成するが
+ * 最初から完了済み（fulfilled_by_task_id 付き）として記録する（pull-forward.ts）。
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -11,12 +15,23 @@ import {
   plannedTaskToRow,
   type GenMaster,
 } from "./generate";
+import {
+  applyFulfillment,
+  findFulfillment,
+  findPreviousOccurrence,
+  isPullForwardEligible,
+  type DoneTaskForFulfillment,
+  type PullForwardFulfillment,
+} from "./pull-forward";
+import type { RecurrenceRule } from "./recurrence";
 
 export interface GenerationResult {
   date: string;
   planned: number;
   inserted: number;
   alreadyExisted: number;
+  /** 前倒し消化として最初から完了済みで生成した件数（inserted に含む） */
+  pulledForward: number;
 }
 
 function embeddedName(v: unknown): string | null {
@@ -91,6 +106,78 @@ async function loadGenMasters(supabase: SupabaseClient): Promise<GenMaster[]> {
   });
 }
 
+/** 前倒し消化の判定対象（key: masterId|scheduleId）と、その直前の発生日を洗い出す（DB不要） */
+function findPullForwardWindows(
+  masters: GenMaster[],
+  planned: { masterId: string; scheduleId: string }[],
+  date: string,
+): Map<string, string> {
+  const ruleByKey = new Map<string, RecurrenceRule>();
+  for (const m of masters) {
+    for (const s of m.schedules) {
+      ruleByKey.set(`${m.id}|${s.id}`, s.rule);
+    }
+  }
+
+  const windows = new Map<string, string>();
+  for (const p of planned) {
+    const key = `${p.masterId}|${p.scheduleId}`;
+    const rule = ruleByKey.get(key);
+    if (!rule || !isPullForwardEligible(rule.frequency)) continue;
+    const previousOccurrence = findPreviousOccurrence(rule, date);
+    if (previousOccurrence) windows.set(key, previousOccurrence);
+  }
+  return windows;
+}
+
+/** 前倒し消化の判定対象について、実際に完了済みタスクが充足元として存在するか DB で確認する */
+async function findFulfillments(
+  supabase: SupabaseClient,
+  masterIds: string[],
+  windows: Map<string, string>,
+  planned: { masterId: string; scheduleId: string }[],
+  date: string,
+): Promise<Map<string, PullForwardFulfillment>> {
+  const fulfillMap = new Map<string, PullForwardFulfillment>();
+  if (masterIds.length === 0) return fulfillMap;
+
+  const minPrevious = Array.from(windows.values()).sort()[0];
+  const { data: doneRows, error: doneErr } = await supabase
+    .from("cleaning_tasks")
+    .select("id, master_id, task_date, completed_at, completed_by")
+    .eq("status", "done")
+    .in("master_id", masterIds)
+    .gte("task_date", minPrevious)
+    .lt("task_date", date);
+  if (doneErr) throw new Error(`前倒し判定用タスク取得に失敗: ${doneErr.message}`);
+
+  const doneByMaster = new Map<string, DoneTaskForFulfillment[]>();
+  for (const r of (doneRows ?? []) as Record<string, unknown>[]) {
+    const mid = String(r.master_id);
+    const arr = doneByMaster.get(mid) ?? [];
+    arr.push({
+      id: String(r.id),
+      taskDate: String(r.task_date),
+      completedAt: (r.completed_at as string | null) ?? null,
+      completedById: (r.completed_by as string | null) ?? null,
+    });
+    doneByMaster.set(mid, arr);
+  }
+
+  for (const p of planned) {
+    const key = `${p.masterId}|${p.scheduleId}`;
+    const previousOccurrence = windows.get(key);
+    if (!previousOccurrence) continue;
+    const fulfillment = findFulfillment(
+      doneByMaster.get(p.masterId) ?? [],
+      previousOccurrence,
+      date,
+    );
+    if (fulfillment) fulfillMap.set(key, fulfillment);
+  }
+  return fulfillMap;
+}
+
 export async function runGeneration(
   supabase: SupabaseClient,
   date: string,
@@ -111,24 +198,74 @@ export async function runGeneration(
       (r) => `${(r as Record<string, unknown>).master_id}|${(r as Record<string, unknown>).schedule_id}`,
     ),
   );
+  const toPlan = planned.filter((p) => !seen.has(`${p.masterId}|${p.scheduleId}`));
 
-  const toInsert = planned
-    .filter((p) => !seen.has(`${p.masterId}|${p.scheduleId}`))
-    .map(plannedTaskToRow);
+  const pullForwardWindows = findPullForwardWindows(masters, toPlan, date);
+  const pullForwardMasterIds = Array.from(
+    new Set(
+      toPlan
+        .filter((p) => pullForwardWindows.has(`${p.masterId}|${p.scheduleId}`))
+        .map((p) => p.masterId),
+    ),
+  );
+  const fulfillMap = await findFulfillments(
+    supabase,
+    pullForwardMasterIds,
+    pullForwardWindows,
+    toPlan,
+    date,
+  );
+
+  const toInsertPending: Record<string, unknown>[] = [];
+  const toInsertFulfilled: { row: Record<string, unknown>; fulfillment: PullForwardFulfillment }[] = [];
+  for (const p of toPlan) {
+    const row = plannedTaskToRow(p);
+    const fulfillment = fulfillMap.get(`${p.masterId}|${p.scheduleId}`);
+    if (fulfillment) {
+      toInsertFulfilled.push({ row: applyFulfillment(row, fulfillment), fulfillment });
+    } else {
+      toInsertPending.push(row);
+    }
+  }
 
   let inserted = 0;
-  if (toInsert.length > 0) {
+  if (toInsertPending.length > 0) {
     const { error: insErr, count } = await supabase
       .from("cleaning_tasks")
-      .insert(toInsert, { count: "exact" });
+      .insert(toInsertPending, { count: "exact" });
     if (insErr) throw new Error(`タスク生成に失敗: ${insErr.message}`);
-    inserted = count ?? toInsert.length;
+    inserted = count ?? toInsertPending.length;
+  }
+
+  let pulledForward = 0;
+  for (const { row } of toInsertFulfilled) {
+    const { data: created, error: insErr } = await supabase
+      .from("cleaning_tasks")
+      .insert(row)
+      .select("id")
+      .single();
+    if (insErr || !created) {
+      throw new Error(`前倒し消化タスクの作成に失敗: ${insErr?.message ?? ""}`);
+    }
+    const newTaskId = String((created as { id: string }).id);
+    await supabase.from("cleaning_logs").insert({
+      task_id: newTaskId,
+      master_id: row.master_id,
+      master_name: row.master_name,
+      task_date: row.task_date,
+      action: "fulfilled_early",
+      status_after: "done",
+      actor_id: null,
+      comment: row.comment,
+    });
+    pulledForward += 1;
   }
 
   return {
     date,
     planned: planned.length,
-    inserted,
-    alreadyExisted: planned.length - toInsert.length,
+    inserted: inserted + pulledForward,
+    alreadyExisted: planned.length - toPlan.length,
+    pulledForward,
   };
 }

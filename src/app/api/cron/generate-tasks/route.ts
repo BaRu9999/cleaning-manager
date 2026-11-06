@@ -10,6 +10,10 @@
  * で手動割当）。自動繰越は「実施不可として記録済み（status='skipped'）」のタスクは対象外
  * （スタッフ・管理者の判断を尊重。繰越したい場合は実施不可の「翌日に繰り越す」を使う）。
  *
+ * タスク生成（runGeneration）自体にも「前倒し消化」を内包する。毎日以外の定期スケジュールで、
+ * 直前の発生日より後・今回の予定日より前に同じ清掃項目が完了済みなら、今回分は生成するが
+ * 最初から完了済み（pull-forward.ts, fulfilled_by_task_id）として記録し、二重実施を求めない。
+ *
  * 手動テスト:
  *   curl -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/generate-tasks?date=2026-09-10"
  */

@@ -156,6 +156,8 @@ export interface CleaningTask {
   assignmentLocked: boolean;
   /** 前日の実施不可タスクから繰り越された場合、その元タスクの ID */
   originTaskId: string | null;
+  /** 本来の予定日より前に同じ清掃項目が完了済みのため、前倒し消化として自動完了にした場合、その元タスクの ID */
+  fulfilledByTaskId: string | null;
   photoCount: number;
   createdAt: string;
   updatedAt: string;
@@ -168,7 +170,8 @@ export type LogAction =
   | "skip"
   | "reopen"
   | "uncomplete"
-  | "carry_over";
+  | "carry_over"
+  | "fulfilled_early";
 
 export interface CleaningLog {
   id: string;

@@ -36,6 +36,7 @@ export interface TaskCardData {
   completedAt: string | null;
   completedByName: string | null;
   originTaskId: string | null;
+  fulfilledByTaskId: string | null;
 }
 
 export function TaskCard({ task }: { task: TaskCardData }) {
@@ -86,6 +87,11 @@ export function TaskCard({ task }: { task: TaskCardData }) {
             {task.originTaskId ? (
               <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-bold text-sky-700">
                 前日から繰越
+              </span>
+            ) : null}
+            {task.fulfilledByTaskId ? (
+              <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] font-bold text-violet-700">
+                前倒し消化済み
               </span>
             ) : null}
           </div>

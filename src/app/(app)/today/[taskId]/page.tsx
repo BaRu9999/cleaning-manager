@@ -59,6 +59,7 @@ export default async function TaskDetailPage({
         action={
           <div className="flex items-center gap-1.5">
             {task.originTaskId ? <Badge tone="info">前日から繰越</Badge> : null}
+            {task.fulfilledByTaskId ? <Badge tone="info">前倒し消化済み</Badge> : null}
             <StatusBadge status={task.status} />
           </div>
         }

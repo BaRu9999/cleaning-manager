@@ -138,5 +138,6 @@ function toCardData(t: Awaited<ReturnType<typeof getTodayTasks>>["tasks"][number
     completedAt: t.completedAt,
     completedByName: t.completedByName,
     originTaskId: t.originTaskId,
+    fulfilledByTaskId: t.fulfilledByTaskId,
   };
 }
