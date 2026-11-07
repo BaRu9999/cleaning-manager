@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth/guard";
+import { requireReportViewer } from "@/lib/auth/guard";
 import { loadMasterFormOptions } from "@/lib/data/master-form";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MasterForm } from "@/components/master/MasterForm";
@@ -6,7 +6,7 @@ import { MasterForm } from "@/components/master/MasterForm";
 export const dynamic = "force-dynamic";
 
 export default async function NewMasterPage() {
-  await requireAdmin();
+  await requireReportViewer();
   const options = await loadMasterFormOptions();
 
   return (

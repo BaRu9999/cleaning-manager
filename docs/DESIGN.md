@@ -40,14 +40,17 @@
 - スタッフが自分を `admin` に昇格できないよう、`users` にロール改変防止トリガーを張る。
 - `users.has_login`（既定 true）が false の行は「シフト連携のみ」＝ `auth.users` に対応行が無く
   ログイン・LINE通知の対象外。清掃の自動割当・出勤登録の母集団としてのみ使う（§9-C）。
-- 例外的に `/reports`（完了レポートPDF、§5-C）と `/today` の「＋臨時の清掃を追加（手動）」
-  （`AddManualTask` / `createManualTaskAction`）は `role` ではなく `job_title` も見て許可する
+- 例外的に `/reports`（完了レポートPDF、§5-C）、`/today` の「＋臨時の清掃を追加（手動）」
+  （`AddManualTask` / `createManualTaskAction`）、`/admin/master` の新規項目登録
+  （`saveMasterAction` の `id=null` 時）は `role` ではなく `job_title` も見て許可する
   共通ロジック `isAdminOrCleaningLeader()`（`role=admin` または `job_title=cleaning_leader`
   なら許可。Server Component 用に `requireReportViewer()`、Server Action 用に
-  `assertAdminOrCleaningLeader()`）。後者は RLS 側も対応が必要（`cleaning_tasks_insert`
-  ポリシーに `is_cleaning_leader()` を追加、migration `0011`。`update`/`delete` ポリシーは
-  変更しておらず、削除は従来どおり管理者のみ）。他の `/admin/*` 画面・操作は従来どおり
-  `role=admin` 限定のまま。
+  `assertAdminOrCleaningLeader()`）。RLS 側も対応が必要（`cleaning_tasks_insert` ポリシーに
+  `is_cleaning_leader()` を追加、migration `0011`。`cleaning_master_insert` /
+  `cleaning_schedules_insert` ポリシーも同様に追加、migration `0012`）。
+  いずれも **insert のみ**が対象で、既存項目の編集・無効化・削除・それ以外の `/admin/*`
+  画面・操作は従来どおり `role=admin` 限定のまま（`/admin/master` 一覧の編集リンク・
+  有効化無効化・削除ボタンも清掃リーダーには非表示）。
 
 ---
 

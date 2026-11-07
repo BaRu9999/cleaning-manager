@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { assertAdmin } from "@/lib/auth/guard";
+import { assertAdmin, assertAdminOrCleaningLeader } from "@/lib/auth/guard";
 import {
   firstIssue,
   masterInputSchema,
@@ -27,6 +27,8 @@ function scheduleRow(masterId: string, s: ScheduleInput): Record<string, unknown
 
 /**
  * 清掃項目の新規作成 / 更新。payloadJson は MasterForm が組み立てた JSON 文字列。
+ * 新規作成（id=null）は管理者または清掃リーダーが可能。既存項目の更新は管理者のみ
+ * （RLS の cleaning_master_insert / _update ポリシーと対応、migration 0012）。
  * @param id 既存項目の ID（新規作成時は null）
  */
 export async function saveMasterAction(
@@ -34,7 +36,7 @@ export async function saveMasterAction(
   payloadJson: string,
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    const admin = await assertAdmin();
+    const me = id ? await assertAdmin() : await assertAdminOrCleaningLeader();
     let raw: unknown;
     try {
       raw = JSON.parse(payloadJson);
@@ -72,7 +74,7 @@ export async function saveMasterAction(
     } else {
       const { data, error } = await supabase
         .from("cleaning_master")
-        .insert({ ...masterCols, created_by: admin.id })
+        .insert({ ...masterCols, created_by: me.id })
         .select("id")
         .single();
       if (error || !data) return fail(`作成に失敗しました: ${error?.message ?? ""}`);

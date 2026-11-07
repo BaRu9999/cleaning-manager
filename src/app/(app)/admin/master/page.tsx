@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth/guard";
+import { requireReportViewer } from "@/lib/auth/guard";
 import { listMasters } from "@/lib/data/masters";
 import { getStoreSettings } from "@/lib/data/settings";
 import {
@@ -18,7 +18,7 @@ import { MasterRowActions } from "@/components/master/MasterRowActions";
 export const dynamic = "force-dynamic";
 
 export default async function MasterListPage() {
-  await requireAdmin();
+  const me = await requireReportViewer();
   const [masters, store] = await Promise.all([
     listMasters({ includeInactive: true }),
     getStoreSettings(),
@@ -70,12 +70,16 @@ export default async function MasterListPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <Link
-                        href={`/admin/master/${m.id}`}
-                        className="text-base font-bold text-slate-900 hover:underline"
-                      >
-                        {m.name}
-                      </Link>
+                      {me.role === "admin" ? (
+                        <Link
+                          href={`/admin/master/${m.id}`}
+                          className="text-base font-bold text-slate-900 hover:underline"
+                        >
+                          {m.name}
+                        </Link>
+                      ) : (
+                        <span className="text-base font-bold text-slate-900">{m.name}</span>
+                      )}
                       {!m.active ? <Badge tone="skipped">無効</Badge> : null}
                       {m.priority === "high" ? <Badge tone="high">優先度高</Badge> : null}
                     </div>
@@ -101,7 +105,9 @@ export default async function MasterListPage() {
                       ) : null}
                     </div>
                   </div>
-                  <MasterRowActions id={m.id} active={m.active} name={m.name} />
+                  {me.role === "admin" ? (
+                    <MasterRowActions id={m.id} active={m.active} name={m.name} />
+                  ) : null}
                 </div>
               </li>
             );
