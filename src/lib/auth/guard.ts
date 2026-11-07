@@ -99,10 +99,15 @@ export async function requireAdmin(): Promise<UserProfile> {
   return profile;
 }
 
+/** 管理者、または役職が清掃リーダー（週次/月次レポート閲覧・臨時の清掃追加など、管理者に準じる操作用） */
+export function isAdminOrCleaningLeader(profile: UserProfile): boolean {
+  return profile.role === "admin" || profile.jobTitle === "cleaning_leader";
+}
+
 /** 管理者、または役職が清掃リーダーのスタッフを要求（週次/月次レポート閲覧用）。それ以外は /today へ戻す */
 export async function requireReportViewer(): Promise<UserProfile> {
   const profile = await requireMember();
-  if (profile.role !== "admin" && profile.jobTitle !== "cleaning_leader") redirect("/today");
+  if (!isAdminOrCleaningLeader(profile)) redirect("/today");
   return profile;
 }
 
@@ -118,5 +123,14 @@ export async function assertMember(): Promise<UserProfile> {
 export async function assertAdmin(): Promise<UserProfile> {
   const profile = await assertMember();
   if (profile.role !== "admin") throw new ForbiddenError("管理者権限が必要です");
+  return profile;
+}
+
+/** 管理者、または役職が清掃リーダーを要求（臨時の清掃追加など）。それ以外は ForbiddenError */
+export async function assertAdminOrCleaningLeader(): Promise<UserProfile> {
+  const profile = await assertMember();
+  if (!isAdminOrCleaningLeader(profile)) {
+    throw new ForbiddenError("管理者または清掃リーダー権限が必要です");
+  }
   return profile;
 }

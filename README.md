@@ -59,7 +59,7 @@ src/
     auth/guard.ts      requireMember / requireAdmin / assertAdmin
     date/jst.ts        JST 日付ユーティリティ
     supabase/          server / client / middleware / admin
-supabase/migrations/   0001_init.sql 〜 0010_pull_forward.sql（詳細は §11）
+supabase/migrations/   0001_init.sql 〜 0011_cleaning_leader_manual_task.sql（詳細は §11）
 scripts/               seed.ts / set-admin.ts
 docs/DESIGN.md         設計ドキュメント
 ```
@@ -69,7 +69,7 @@ docs/DESIGN.md         設計ドキュメント
 ## 3. Supabase 設定
 
 1. [supabase.com](https://supabase.com) でプロジェクトを作成。
-2. **SQL Editor** で `supabase/migrations/` 内のファイルを **番号順に（0001 → 0010）すべて**実行
+2. **SQL Editor** で `supabase/migrations/` 内のファイルを **番号順に（0001 → 0011）すべて**実行
    （各ファイルの内容は §11「データモデル」参照。冪等・非破壊のため、新規プロジェクトでも
    既存プロジェクトの更新でも同じ手順です）。
 3. **Project Settings → API** から URL / anon key / service_role key を控える（→ 環境変数へ）。
@@ -425,7 +425,7 @@ npm run set-admin -- you@example.com   # 管理者作成 / 復旧
 
 ## 9. 本番デプロイ方法
 
-1. Supabase 本番プロジェクトで `supabase/migrations/` を番号順に（0001 → 0010）すべて実行。
+1. Supabase 本番プロジェクトで `supabase/migrations/` を番号順に（0001 → 0011）すべて実行。
 2. GitHub に push → Vercel に import。
 3. Vercel の環境変数を設定（`CRON_SECRET` を含む）。
 4. Deploy。
@@ -489,6 +489,11 @@ npm run set-admin -- you@example.com   # 管理者作成 / 復旧
   を追加、`cleaning_logs.action` に `fulfilled_early` を追加。本来の予定日より前に同じ
   清掃項目を完了済みなら、その回の予定タスクを自動完了（前倒し消化）にするための列
   （詳細は `docs/DESIGN.md` §9-F）。既存データは変更しない
+- `0011_cleaning_leader_manual_task.sql`: `public.is_cleaning_leader()`（SECURITY DEFINER）を
+  追加し、`cleaning_tasks_insert` RLSポリシーに「管理者 または 清掃リーダー」を許可。
+  `/today` の「＋臨時の清掃を追加（手動）」を清掃リーダー（`job_title=cleaning_leader`）も
+  使えるようにするための変更（詳細は `docs/DESIGN.md` §2）。`update`/`delete` ポリシーは
+  変更しない（削除は従来どおり管理者のみ）
 
 - 1店舗運用。設定（`store_settings` / `notification_settings` / `cleaning_notification_settings`）
   は `id = 1` のシングルトン行。

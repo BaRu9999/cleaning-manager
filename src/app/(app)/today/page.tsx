@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireMember } from "@/lib/auth/guard";
+import { isAdminOrCleaningLeader, requireMember } from "@/lib/auth/guard";
 import { getTodayTasks } from "@/lib/data/tasks";
 import { listAssignableUsers, listMasters } from "@/lib/data/masters";
 import { getStoreSettings } from "@/lib/data/settings";
@@ -24,11 +24,12 @@ export default async function TodayPage({
   const { mine } = await searchParams;
   const onlyMine = mine === "1";
 
+  const canAddManualTask = isAdminOrCleaningLeader(me);
   const [{ date, tasks }, store, masters, users] = await Promise.all([
     getTodayTasks(),
     getStoreSettings(),
-    me.role === "admin" ? listMasters() : Promise.resolve([]),
-    me.role === "admin" ? listAssignableUsers() : Promise.resolve([]),
+    canAddManualTask ? listMasters() : Promise.resolve([]),
+    canAddManualTask ? listAssignableUsers() : Promise.resolve([]),
   ]);
 
   const visible = onlyMine
@@ -103,13 +104,13 @@ export default async function TodayPage({
         </div>
       )}
 
-      {me.role === "admin" ? (
+      {canAddManualTask ? (
         <div className="mt-6 space-y-3">
           <AddManualTask
             masters={masters.map((m) => ({ id: m.id, name: m.name }))}
             users={users.map((u) => ({ id: u.id, name: u.displayName }))}
           />
-          {visible.length > 0 ? (
+          {visible.length > 0 && me.role === "admin" ? (
             <div className="flex justify-center">
               <RegenerateButton label="不足分を生成（冪等）" />
             </div>

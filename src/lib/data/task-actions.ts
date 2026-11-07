@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { assertAdmin, assertMember, ForbiddenError } from "@/lib/auth/guard";
+import { assertAdmin, assertAdminOrCleaningLeader, assertMember, ForbiddenError } from "@/lib/auth/guard";
 import { addDays, jstDateString, jstDateTimeToInstant } from "@/lib/date/jst";
 import { resolveDueTime } from "@/lib/cleaning/slots";
 import { carryOverOneTask } from "@/lib/cleaning/run-carry-over";
@@ -386,7 +386,7 @@ export async function createManualTaskAction(input: {
   dueTime?: string | null;
 }): Promise<ActionResult<{ id: string }>> {
   try {
-    const me = await assertAdmin();
+    const me = await assertAdminOrCleaningLeader();
     const parsed = manualSchema.safeParse(input);
     if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "入力エラー");
     const supabase = await createClient();
