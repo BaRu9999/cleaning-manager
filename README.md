@@ -333,6 +333,12 @@ env は **import 時ではなく使用時に検証**します（`src/lib/env.ts`
   `@react-pdf/font` が実行時にこのパス文字列へ直接 `fetch()` する）。この2点は変更時に要注意。
 - PDFの内容: 全体サマリー／清掃が行き届いていない場所（完了率が低い順）／よく忘れられる清掃項目／
   曜日別の予定・未実施件数（月曜始まり）／スタッフ別の完了登録数。
+- 画面表示（PDFとは別軸の追加機能）: 「今週のレポート」に7日分の日付リスト、
+  「今月のレポート」に月間カレンダー（`src/components/calendar/MonthCalendarGrid.tsx`、
+  `/admin/calendar` と共用）を表示。日付をタップすると `/reports/[date]` で
+  その日の完了・未実施・スキップ全件とアップ写真のサムネイルを確認できる（権限は
+  `/reports` と同じ。写真を一括取得する `getPhotosForTasks()` を `src/lib/data/tasks.ts`
+  に追加、詳細は `docs/DESIGN.md` §9-G）。
 
 ---
 

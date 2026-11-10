@@ -60,15 +60,29 @@ export async function getTask(id: string): Promise<CleaningTask | null> {
 }
 
 export async function getTaskPhotos(taskId: string): Promise<CleaningPhoto[]> {
+  const byTask = await getPhotosForTasks([taskId]);
+  return byTask.get(taskId) ?? [];
+}
+
+/**
+ * 複数タスク分の写真を一括取得し、タスクIDごとにまとめて返す（日別レポートの
+ * サムネイル表示用）。署名付きURLの発行は対象タスク全体で1回にまとめる。
+ */
+export async function getPhotosForTasks(
+  taskIds: string[],
+): Promise<Map<string, CleaningPhoto[]>> {
+  const byTask = new Map<string, CleaningPhoto[]>();
+  if (taskIds.length === 0) return byTask;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("cleaning_photos")
     .select("*")
-    .eq("task_id", taskId)
+    .in("task_id", taskIds)
     .order("created_at");
   if (error) throw new Error(`写真の取得に失敗しました: ${error.message}`);
   const photos = (data ?? []).map((r) => mapPhoto(r as Record<string, unknown>));
-  if (photos.length === 0) return photos;
+  if (photos.length === 0) return byTask;
 
   const { data: signed } = await supabase.storage
     .from(PHOTO_BUCKET)
@@ -79,10 +93,13 @@ export async function getTaskPhotos(taskId: string): Promise<CleaningPhoto[]> {
   const urlByPath = new Map(
     (signed ?? []).map((s) => [s.path ?? "", s.signedUrl ?? null]),
   );
-  return photos.map((p) => ({
-    ...p,
-    signedUrl: urlByPath.get(p.storagePath) ?? null,
-  }));
+  for (const p of photos) {
+    const withUrl: CleaningPhoto = { ...p, signedUrl: urlByPath.get(p.storagePath) ?? null };
+    const arr = byTask.get(p.taskId) ?? [];
+    arr.push(withUrl);
+    byTask.set(p.taskId, arr);
+  }
+  return byTask;
 }
 
 export async function getTaskLogs(taskId: string): Promise<CleaningLog[]> {

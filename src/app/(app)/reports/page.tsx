@@ -1,12 +1,20 @@
+import Link from "next/link";
 import { requireReportViewer } from "@/lib/auth/guard";
 import { getStatTasks } from "@/lib/data/stats-data";
-import { jstDateString } from "@/lib/date/jst";
+import { addDays, formatShortJp, jstDateString } from "@/lib/date/jst";
 import { overallCompletion } from "@/lib/cleaning/stats";
-import { getMonthRange, getWeekRange } from "@/lib/reports/period";
+import { getMonthRange, getWeekRange, type ReportPeriod } from "@/lib/reports/period";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Alert } from "@/components/ui/Alert";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Stat } from "@/components/ui/Stat";
+import { MonthCalendarGrid } from "@/components/calendar/MonthCalendarGrid";
+
+function weekDates(week: ReportPeriod): string[] {
+  const out: string[] = [];
+  for (let d = week.from; d <= week.to; d = addDays(d, 1)) out.push(d);
+  return out;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +58,32 @@ export default async function ReportsPage() {
           >
             今週のレポートをPDFでダウンロード
           </a>
+          <ul className="space-y-1.5">
+            {weekDates(week).map((date) => {
+              const dTasks = weekTasks.filter((t) => t.taskDate === date);
+              const c = overallCompletion(dTasks);
+              return (
+                <li key={date}>
+                  <Link
+                    href={`/reports/${date}`}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-sm"
+                  >
+                    <span className="font-bold text-slate-700">{formatShortJp(date)}</span>
+                    {dTasks.length > 0 ? (
+                      <span className="tabular text-xs text-slate-500">
+                        予定{c.planned}・完了{c.done}
+                        {c.missed > 0 ? (
+                          <span className="font-bold text-red-600"> ・未{c.missed}</span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-300">タスクなし</span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </CardBody>
       </Card>
 
@@ -68,9 +102,18 @@ export default async function ReportsPage() {
           >
             今月のレポートをPDFでダウンロード
           </a>
+          <MonthCalendarGrid
+            month={month.from.slice(0, 7)}
+            tasks={monthTasks}
+            today={today}
+            dateHref={(date) => `/reports/${date}`}
+          />
         </CardBody>
       </Card>
 
+      <p className="text-xs text-slate-400">
+        日付をタップすると、その日の清掃実施状況（完了・未実施・スキップ）とアップされた写真を確認できます。
+      </p>
       <p className="text-xs text-slate-400">
         PDFには完了率、清掃が行き届いていない場所（完了率が低い順）、よく忘れられる清掃項目、曜日別の予定・未実施件数、スタッフ別の完了登録数が含まれます。
       </p>

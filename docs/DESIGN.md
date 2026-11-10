@@ -165,7 +165,8 @@
 | `/admin/assignments` | admin | 出勤・清掃割当（出勤スタッフ登録＋自動割当ボード） |
 | `/admin/shift-import` | admin | タニタ柏シフトCSV取込（出勤・ホール/キッチン担当を自動反映） |
 | `/admin/equipment-issues` | admin | 設備異常報告の一覧・対応記録 |
-| `/reports` | admin + 清掃リーダー | 週次・月次の完了レポートPDF出力（詳細は README.md §5-C） |
+| `/reports` | admin + 清掃リーダー | 週次・月次の完了レポートPDF出力（詳細は README.md §5-C）＋画面上での週間日付リスト・月間カレンダー |
+| `/reports/[date]` | admin + 清掃リーダー | レポート期間内の日別詳細。完了・未実施・スキップ全件＋アップ写真のサムネイル表示（`/admin/calendar/[date]` と同系統、権限が異なるため別ルート） |
 | `/login` | — | ログイン（パスワード / メールリンク） |
 
 ## 8. API / Cron
@@ -322,6 +323,28 @@ Webhook URLを保存した瞬間に他システムの設定まで書き換わっ
 - 自己収束: 前倒しで免除された回自体が「次回のための基準日」になるため、1回の早期実施が
   2回以上先の予定まで連鎖して免除することはない。
 - `getTasksForDate`/`getTask` は `select("*")` のため追加のクエリ変更は不要。
+
+## 9-G. 完了レポートの日別詳細（`/reports/[date]`）
+
+`/reports`（完了率などのPDF出力画面）に、画面上でも実績を確認できる形式を追加。
+PDF自体の内容・レイアウトは変更していない。
+
+- `/reports` の「今週のレポート」カードに月〜日の7日分の縦リスト、「今月のレポート」
+  カードに月間カレンダーグリッドを追加（いずれも日付をタップすると `/reports/[date]`
+  に遷移）。カレンダーグリッドは `/admin/calendar` から
+  `src/components/calendar/MonthCalendarGrid.tsx` として切り出して共用（セルの
+  リンク先だけ `dateHref` で呼び出し側が決める。ナビ（前月/翌月）は各ページ側に残し、
+  グリッド本体だけ共通化）。
+- `/reports/[date]`: 権限は `/reports` と同じ `requireReportViewer()`（管理者＋清掃リーダー）。
+  `/admin/calendar/[date]`（管理者限定）と見た目・ロジックはほぼ同系統だが、権限が異なるため
+  別ルートとして用意（ガードを緩めるのではなく複製）。表示は完了・未実施・スキップの全件
+  （`getHistory({from: date, to: date})`、完了済みだけに絞らない）。
+- 写真はサムネイルをその場でインライン表示（タップで元画像を新規タブで開く）。
+  `src/lib/data/tasks.ts` の `getPhotosForTasks(taskIds)` で対象日の全タスク分の写真を
+  まとめて取得＋署名付きURL発行（1タスクずつ`getTaskPhotos`を呼ぶN+1を避ける）。
+  `getTaskPhotos(taskId)` は内部でこれを呼ぶラッパーに変更（挙動は変えていない）。
+  写真の閲覧権限（`storage.objects` の `cleaning_photos_read` ポリシー）はもともと
+  在籍メンバー全員に開いているため、RLS変更は不要。
 
 ## 10. 分析・ダッシュボード（`src/lib/cleaning/stats.ts` 純関数）
 
