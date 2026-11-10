@@ -1,18 +1,12 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/guard";
 import { getStatTasks } from "@/lib/data/stats-data";
-import { endOfMonth, formatMonthJp, jstDateString } from "@/lib/date/jst";
+import { endOfMonth, formatMonthJp, jstDateString, shiftMonth } from "@/lib/date/jst";
 import { overallCompletion } from "@/lib/cleaning/stats";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MonthCalendarGrid } from "@/components/calendar/MonthCalendarGrid";
 
 export const dynamic = "force-dynamic";
-
-function shiftMonth(ym: string, delta: number): string {
-  const [y, m] = ym.split("-").map((n) => Number.parseInt(n, 10));
-  const d = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-}
 
 export default async function CalendarPage({
   searchParams,

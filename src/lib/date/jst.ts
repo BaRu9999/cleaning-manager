@@ -74,6 +74,13 @@ export function daysInMonth(dateStr: string): number {
   return Number.parseInt(endOfMonth(dateStr).slice(8, 10), 10);
 }
 
+/** `YYYY-MM` に月数を加算した `YYYY-MM` を返す（例: shiftMonth("2026-01", -1) -> "2025-12"） */
+export function shiftMonth(ym: string, delta: number): string {
+  const [y, m] = ym.split("-").map((n) => Number.parseInt(n, 10));
+  const d = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 /** from..to（両端含む）の日付文字列配列 */
 export function dateRange(from: string, to: string): string[] {
   const out: string[] = [];

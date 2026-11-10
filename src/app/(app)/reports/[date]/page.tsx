@@ -32,7 +32,10 @@ export default async function ReportDatePage({
 
   return (
     <div className="space-y-4">
-      <PageHeader title={formatLongJp(date)} back={{ href: "/reports", label: "完了レポート" }} />
+      <PageHeader
+        title={formatLongJp(date)}
+        back={{ href: `/reports?month=${date.slice(0, 7)}`, label: "完了レポート" }}
+      />
 
       {tasks.length === 0 ? (
         <EmptyState

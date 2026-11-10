@@ -324,17 +324,25 @@ Webhook URLを保存した瞬間に他システムの設定まで書き換わっ
   2回以上先の予定まで連鎖して免除することはない。
 - `getTasksForDate`/`getTask` は `select("*")` のため追加のクエリ変更は不要。
 
-## 9-G. 完了レポートの日別詳細（`/reports/[date]`）
+## 9-G. 完了レポートの画面表示・日別詳細・対象期間切り替え（`/reports`, `/reports/[date]`）
 
 `/reports`（完了率などのPDF出力画面）に、画面上でも実績を確認できる形式を追加。
 PDF自体の内容・レイアウトは変更していない。
 
-- `/reports` の「今週のレポート」カードに月〜日の7日分の縦リスト、「今月のレポート」
+- `/reports` の「週次レポート」カードに月〜日の7日分の縦リスト、「月次レポート」
   カードに月間カレンダーグリッドを追加（いずれも日付をタップすると `/reports/[date]`
   に遷移）。カレンダーグリッドは `/admin/calendar` から
   `src/components/calendar/MonthCalendarGrid.tsx` として切り出して共用（セルの
   リンク先だけ `dateHref` で呼び出し側が決める。ナビ（前月/翌月）は各ページ側に残し、
-  グリッド本体だけ共通化）。
+  グリッド本体だけ共通化。`shiftMonth()` も `src/lib/date/jst.ts` の共有ユーティリティに
+  切り出し）。
+- **対象期間の切り替え**（`?week=YYYY-MM-DD` / `?month=YYYY-MM`、週と月は独立）：
+  「← 前週」「翌週 →」「← 前月」「翌月 →」で任意の期間に移動でき、先週・先月分の
+  サマリー・カレンダー・PDFダウンロードリンク（`/api/reports/weekly|monthly?date=...`、
+  既存ルートが元々 `?date=` で任意期間に対応済みだったため API 側の変更は無し）が
+  その期間のものに切り替わる。`/reports/[date]` の戻るリンクは遷移元の月
+  （`date.slice(0,7)`）を引いた `?month=` 付きで `/reports` に戻す
+  （`/admin/calendar/[date]` の戻るリンクと同じ考え方）。
 - `/reports/[date]`: 権限は `/reports` と同じ `requireReportViewer()`（管理者＋清掃リーダー）。
   `/admin/calendar/[date]`（管理者限定）と見た目・ロジックはほぼ同系統だが、権限が異なるため
   別ルートとして用意（ガードを緩めるのではなく複製）。表示は完了・未実施・スキップの全件

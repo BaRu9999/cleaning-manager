@@ -316,9 +316,12 @@ env は **import 時ではなく使用時に検証**します（`src/lib/env.ts`
   `src/lib/auth/guard.ts`）。清掃リーダーは `role=staff` のままでもこの画面だけアクセス可能
   （他の `/admin/*` 画面は従来どおり `role=admin` 限定）。ナビの表示も
   `src/components/layout/nav-items.ts` の `cleaningLeaderOk` フラグで同じ条件に合わせている。
-- 画面 `/reports`: 今週・今月のサマリー（予定/完了/未実施/完了率）をオンスクリーンで確認し、
-  「PDFでダウンロード」リンクから `GET /api/reports/weekly` / `GET /api/reports/monthly`
+- 画面 `/reports`: 週次・月次それぞれのサマリー（予定/完了/未実施/完了率）をオンスクリーンで
+  確認し、「PDFでダウンロード」リンクから `GET /api/reports/weekly` / `GET /api/reports/monthly`
   （`?date=YYYY-MM-DD` でその日を含む週/月を指定可。省略時は今日基準）を叩く。
+  対象期間は `?week=YYYY-MM-DD`（その日を含む週）・`?month=YYYY-MM` で画面側も先週・先月など
+  任意の期間に切り替え可能（「← 前週」「翌週 →」等のナビ、週と月は独立して移動。
+  PDFダウンロードリンクも選択中の期間に追従）。
 - 生成は**オンデマンド**（ボタンを押した時にその場でPDFを生成して返す）。Cronによる自動生成・
   自動配信はしていない（必要になれば `/api/reports/*` のロジックをCronからも呼べる）。
 - 集計ロジックは既存の清掃漏れ分析と同じ純関数を再利用（`src/lib/cleaning/stats.ts` の

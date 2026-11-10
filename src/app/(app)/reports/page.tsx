@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireReportViewer } from "@/lib/auth/guard";
 import { getStatTasks } from "@/lib/data/stats-data";
-import { addDays, formatShortJp, jstDateString } from "@/lib/date/jst";
+import { addDays, formatShortJp, jstDateString, shiftMonth } from "@/lib/date/jst";
 import { overallCompletion } from "@/lib/cleaning/stats";
 import { getMonthRange, getWeekRange, type ReportPeriod } from "@/lib/reports/period";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -16,14 +16,38 @@ function weekDates(week: ReportPeriod): string[] {
   return out;
 }
 
+/** /reports の対象期間クエリを組み立てる（指定しなかった側はそのまま保持） */
+function reportsHref(opts: { week?: string; month?: string }): string {
+  const params = new URLSearchParams();
+  if (opts.week) params.set("week", opts.week);
+  if (opts.month) params.set("month", opts.month);
+  const qs = params.toString();
+  return qs ? `/reports?${qs}` : "/reports";
+}
+
+const navLinkClass =
+  "rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-600";
+const jumpLinkClass = "text-sm font-bold text-slate-500 hover:underline";
+
 export const dynamic = "force-dynamic";
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ week?: string; month?: string }>;
+}) {
   await requireReportViewer();
+  const { week: weekRaw, month: monthRaw } = await searchParams;
 
   const today = jstDateString();
-  const week = getWeekRange(today);
-  const month = getMonthRange(today);
+  const weekBase = weekRaw && /^\d{4}-\d{2}-\d{2}$/.test(weekRaw) ? weekRaw : today;
+  const week = getWeekRange(weekBase);
+  const monthParam =
+    monthRaw && /^\d{4}-\d{2}$/.test(monthRaw) ? monthRaw : today.slice(0, 7);
+  const month = getMonthRange(`${monthParam}-01`);
+
+  const isCurrentWeek = week.from === getWeekRange(today).from;
+  const isCurrentMonth = monthParam === today.slice(0, 7);
 
   const [weekTasks, monthTasks] = await Promise.all([
     getStatTasks(week.from, week.to),
@@ -36,7 +60,7 @@ export default async function ReportsPage() {
     <div className="space-y-4">
       <PageHeader
         title="完了レポート"
-        description="週次・月次の完了実績、清掃が行き届いていない場所、曜日別の傾向をPDFで出力します。グループでの共有にご利用ください。"
+        description="週次・月次の完了実績、清掃が行き届いていない場所、曜日別の傾向をPDFで出力します。対象期間を切り替えて先週・先月分なども出力できます。"
       />
 
       <Alert tone="info">
@@ -44,8 +68,29 @@ export default async function ReportsPage() {
       </Alert>
 
       <Card>
-        <CardHeader title="今週のレポート" subtitle={week.label} />
+        <CardHeader title="週次レポート" subtitle={week.label} />
         <CardBody className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Link
+              href={reportsHref({ week: addDays(week.from, -7), month: monthRaw })}
+              className={navLinkClass}
+            >
+              ← 前週
+            </Link>
+            {!isCurrentWeek ? (
+              <Link href={reportsHref({ month: monthRaw })} className={jumpLinkClass}>
+                今週
+              </Link>
+            ) : (
+              <span />
+            )}
+            <Link
+              href={reportsHref({ week: addDays(week.from, 7), month: monthRaw })}
+              className={navLinkClass}
+            >
+              翌週 →
+            </Link>
+          </div>
           <div className="grid grid-cols-4 gap-2">
             <Stat label="予定" value={weekStats.planned} />
             <Stat label="完了" value={weekStats.done} />
@@ -53,10 +98,10 @@ export default async function ReportsPage() {
             <Stat label="完了率" value={weekStats.rate} unit="%" emphasis />
           </div>
           <a
-            href={`/api/reports/weekly?date=${today}`}
+            href={`/api/reports/weekly?date=${week.from}`}
             className="tap inline-block rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white"
           >
-            今週のレポートをPDFでダウンロード
+            この週のレポートをPDFでダウンロード
           </a>
           <ul className="space-y-1.5">
             {weekDates(week).map((date) => {
@@ -88,8 +133,29 @@ export default async function ReportsPage() {
       </Card>
 
       <Card>
-        <CardHeader title="今月のレポート" subtitle={month.label} />
+        <CardHeader title="月次レポート" subtitle={month.label} />
         <CardBody className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Link
+              href={reportsHref({ week: weekRaw, month: shiftMonth(monthParam, -1) })}
+              className={navLinkClass}
+            >
+              ← 前月
+            </Link>
+            {!isCurrentMonth ? (
+              <Link href={reportsHref({ week: weekRaw })} className={jumpLinkClass}>
+                今月
+              </Link>
+            ) : (
+              <span />
+            )}
+            <Link
+              href={reportsHref({ week: weekRaw, month: shiftMonth(monthParam, 1) })}
+              className={navLinkClass}
+            >
+              翌月 →
+            </Link>
+          </div>
           <div className="grid grid-cols-4 gap-2">
             <Stat label="予定" value={monthStats.planned} />
             <Stat label="完了" value={monthStats.done} />
@@ -97,13 +163,13 @@ export default async function ReportsPage() {
             <Stat label="完了率" value={monthStats.rate} unit="%" emphasis />
           </div>
           <a
-            href={`/api/reports/monthly?date=${today}`}
+            href={`/api/reports/monthly?date=${month.from}`}
             className="tap inline-block rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white"
           >
-            今月のレポートをPDFでダウンロード
+            この月のレポートをPDFでダウンロード
           </a>
           <MonthCalendarGrid
-            month={month.from.slice(0, 7)}
+            month={monthParam}
             tasks={monthTasks}
             today={today}
             dateHref={(date) => `/reports/${date}`}
