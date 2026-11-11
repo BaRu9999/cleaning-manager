@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireReportViewer } from "@/lib/auth/guard";
+import { isAdminOrCleaningLeader, requireMember } from "@/lib/auth/guard";
 import { getHistory, getPhotosForTasks } from "@/lib/data/tasks";
 import { formatLongJp, formatInstantJst } from "@/lib/date/jst";
 import { summarizeProgress } from "@/lib/cleaning/progress";
@@ -18,7 +18,7 @@ export default async function ReportDatePage({
 }: {
   params: Promise<{ date: string }>;
 }) {
-  await requireReportViewer();
+  const me = await requireMember();
   const { date } = await params;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) notFound();
 
@@ -34,7 +34,11 @@ export default async function ReportDatePage({
     <div className="space-y-4">
       <PageHeader
         title={formatLongJp(date)}
-        back={{ href: `/reports?month=${date.slice(0, 7)}`, label: "完了レポート" }}
+        back={
+          isAdminOrCleaningLeader(me)
+            ? { href: `/reports?month=${date.slice(0, 7)}`, label: "完了レポート" }
+            : { href: `/history?from=${date}&to=${date}`, label: "清掃履歴" }
+        }
       />
 
       {tasks.length === 0 ? (
