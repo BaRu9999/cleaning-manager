@@ -353,6 +353,14 @@ PDF自体の内容・レイアウトは変更していない。
   `getTaskPhotos(taskId)` は内部でこれを呼ぶラッパーに変更（挙動は変えていない）。
   写真の閲覧権限（`storage.objects` の `cleaning_photos_read` ポリシー）はもともと
   在籍メンバー全員に開いているため、RLS変更は不要。
+- **PDF内にも同じ日別詳細へのリンクを追加**（`build-report.ts` の `CleaningReportData.days`、
+  `pdf-document.tsx` の「日別の実施状況」セクション）。写真そのものをPDFに埋め込む方式は
+  生成負荷・ファイルサイズの観点で見送り、`@react-pdf/renderer` の `Link` コンポーネントで
+  各日付行を `${siteUrl}/reports/[date]` へのハイパーリンク注釈にする方式を採った
+  （PDFを開いた人がタップ/クリックするとブラウザで `/reports/[date]` が開く。ログインが必要）。
+  `siteUrl` は `buildCleaningReport()` の必須引数として渡す（`getSiteUrl()`、`src/lib/env.ts`。
+  既存のLINE/Slack通知リンクと同じ関数を再利用）。日別行は対象期間の全日（`dateRange()`、
+  タスクが0件の日も含む）を表示する。
 
 ## 10. 分析・ダッシュボード（`src/lib/cleaning/stats.ts` 純関数）
 

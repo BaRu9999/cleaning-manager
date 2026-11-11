@@ -117,7 +117,7 @@ service_role を使うのは Cron 4経路と `scripts/*` のみで、クライ�
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | anon public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | **サーバー専用**。Cron・seed のみ使用。`NEXT_PUBLIC_` を付けない |
 | `CRON_SECRET` | ✅ | Cron API の Bearer 認証シークレット（長いランダム文字列）。未設定だと Cron は 401 |
-| `NEXT_PUBLIC_SITE_URL` | 任意（LINE 使用時は実質必須） | 本番 URL（Slack/LINE 通知内リンク・LIFF リダイレクト用） |
+| `NEXT_PUBLIC_SITE_URL` | 任意（LINE 使用時・完了レポートPDF内リンクは実質必須） | 本番 URL（Slack/LINE 通知内リンク・LIFF リダイレクト・完了レポートPDF内の日別リンク用） |
 | `SLACK_WEBHOOK_URL` | 任意 | 初期値。通常は画面（管理者 → 通知設定）で登録・変更 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE 使用時 | Messaging API チャネルの長期アクセストークン。**サーバー専用** |
 | `LINE_CHANNEL_SECRET` | LINE 使用時 | Webhook 署名検証用。**サーバー専用** |
@@ -334,8 +334,16 @@ env は **import 時ではなく使用時に検証**します（`src/lib/env.ts`
   バンドルしようとしてビルド失敗するため）。フォントパスは `require.resolve` ではなく
   `path.join(process.cwd(), "node_modules", ...)` で組み立てている（webpackの静的解析を避けるため。
   `@react-pdf/font` が実行時にこのパス文字列へ直接 `fetch()` する）。この2点は変更時に要注意。
-- PDFの内容: 全体サマリー／清掃が行き届いていない場所（完了率が低い順）／よく忘れられる清掃項目／
-  曜日別の予定・未実施件数（月曜始まり）／スタッフ別の完了登録数。
+- PDFの内容: 全体サマリー／**日別の実施状況（日付ごとに予定・完了・未実施・完了率。日付の
+  セルはハイパーリンクになっており、タップするとブラウザで該当日の `/reports/[date]`
+  （写真サムネイル込みの日別詳細）が開く。ログインが必要）**／清掃が行き届いていない場所
+  （完了率が低い順）／よく忘れられる清掃項目／曜日別の予定・未実施件数（月曜始まり）／
+  スタッフ別の完了登録数。
+- PDF内のリンクは `getSiteUrl()`（`src/lib/env.ts`、既存。LINE/Slack通知のリンクでも使用）で
+  絶対URLを組み立てる（`NEXT_PUBLIC_SITE_URL` 未設定時は `http://localhost:3000` フォールバック）。
+  `@react-pdf/renderer` の `Link` コンポーネントでPDF内ハイパーリンク注釈として埋め込む
+  （写真そのものをPDFに埋め込むのではなく、Web側の既存画面へリンクする方式。写真埋め込みは
+  生成負荷・ファイルサイズの観点で見送った）。
 - 画面表示（PDFとは別軸の追加機能）: 「今週のレポート」に7日分の日付リスト、
   「今月のレポート」に月間カレンダー（`src/components/calendar/MonthCalendarGrid.tsx`、
   `/admin/calendar` と共用）を表示。日付をタップすると `/reports/[date]` で

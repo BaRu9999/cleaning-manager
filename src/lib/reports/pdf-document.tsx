@@ -5,7 +5,7 @@
 
 import path from "node:path";
 import React from "react";
-import { Document, Page, StyleSheet, Text, View, Font } from "@react-pdf/renderer";
+import { Document, Link, Page, StyleSheet, Text, View, Font } from "@react-pdf/renderer";
 import type { CleaningReportData } from "./build-report";
 
 let fontRegistered = false;
@@ -37,6 +37,7 @@ const C = {
   warn: "#d97706",
   bad: "#dc2626",
   rowAlt: "#f8fafc",
+  link: "#2563eb",
 };
 
 const styles = StyleSheet.create({
@@ -72,7 +73,9 @@ const styles = StyleSheet.create({
   },
   th: { fontSize: 8, fontWeight: 700, paddingHorizontal: 4 },
   td: { fontSize: 9, paddingHorizontal: 4 },
+  tdLink: { fontSize: 9, paddingHorizontal: 4, color: C.link, textDecoration: "underline" },
   empty: { fontSize: 9, color: C.sub, marginTop: 4 },
+  sectionNote: { fontSize: 8, color: C.sub, marginBottom: 4 },
   bar: { height: 6, borderRadius: 2, backgroundColor: C.border, marginTop: 2 },
   barFill: { height: 6, borderRadius: 2 },
   footer: {
@@ -131,6 +134,43 @@ export function CleaningReportDocument({ data }: { data: CleaningReportData }) {
                 {data.overall.rate}%
               </Text>
             </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>日別の実施状況</Text>
+          <Text style={styles.sectionNote}>
+            日付をタップすると、その日の完了・未実施・スキップの詳細とアップされた写真を
+            ブラウザで確認できます（ログインが必要です）。
+          </Text>
+          <View style={styles.table}>
+            <View style={styles.trHead} fixed>
+              <Text style={[styles.th, { width: "25%" }]}>日付</Text>
+              <Text style={[styles.th, { width: "20%" }]}>予定</Text>
+              <Text style={[styles.th, { width: "20%" }]}>完了</Text>
+              <Text style={[styles.th, { width: "20%" }]}>未実施</Text>
+              <Text style={[styles.th, { width: "15%" }]}>完了率</Text>
+            </View>
+            {data.days.map((d, i) => {
+              const rate = d.planned > 0 ? Math.round((d.done / d.planned) * 100) : 0;
+              return (
+                <Link
+                  key={d.date}
+                  src={d.url}
+                  style={[styles.tr, i % 2 === 1 ? { backgroundColor: C.rowAlt } : {}]}
+                >
+                  <Text style={[styles.tdLink, { width: "25%", fontWeight: 700 }]}>{d.label}</Text>
+                  <Text style={[styles.td, { width: "20%" }]}>{d.planned}</Text>
+                  <Text style={[styles.td, { width: "20%" }]}>{d.done}</Text>
+                  <Text style={[styles.td, { width: "20%", color: d.missed > 0 ? C.bad : C.text }]}>
+                    {d.missed}
+                  </Text>
+                  <Text style={[styles.td, { width: "15%", color: d.planned > 0 ? rateColor(rate) : C.sub }]}>
+                    {d.planned > 0 ? `${rate}%` : "―"}
+                  </Text>
+                </Link>
+              );
+            })}
           </View>
         </View>
 

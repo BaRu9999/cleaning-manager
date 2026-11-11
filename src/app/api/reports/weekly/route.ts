@@ -3,6 +3,7 @@
  * クエリ: ?date=YYYY-MM-DD（その日を含む週。省略時は今週）
  */
 import { requireReportViewer } from "@/lib/auth/guard";
+import { getSiteUrl } from "@/lib/env";
 import { getStatTasks } from "@/lib/data/stats-data";
 import { getStoreSettings } from "@/lib/data/settings";
 import { jstDateString, formatInstantJst } from "@/lib/date/jst";
@@ -32,6 +33,7 @@ export async function GET(request: Request): Promise<Response> {
     periodType: "week",
     storeName: store.storeName,
     generatedAtLabel: formatInstantJst(new Date().toISOString()) ?? "",
+    siteUrl: getSiteUrl(),
   });
 
   const pdf = await renderCleaningReportPdf(data);

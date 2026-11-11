@@ -5,6 +5,7 @@
  */
 
 import { WEEKDAY_LABELS } from "@/config/constants";
+import { dateRange, formatShortJp } from "@/lib/date/jst";
 import {
   completionByArea,
   implementationByStaff,
@@ -26,6 +27,16 @@ export interface WeekdayRow {
   missRate: number;
 }
 
+export interface DayRow {
+  date: string;
+  label: string;
+  planned: number;
+  done: number;
+  missed: number;
+  /** その日の詳細（完了・未実施・スキップ全件＋写真）を見られるWeb画面のURL */
+  url: string;
+}
+
 export interface CleaningReportData {
   periodType: "week" | "month";
   periodLabel: string;
@@ -40,6 +51,8 @@ export interface CleaningReportData {
   weekday: WeekdayRow[];
   /** 完了登録数の多いスタッフ。上位10件 */
   topStaff: { id: string; name: string; done: number }[];
+  /** 対象期間内の日別一覧（日付ごとにWeb版の日別詳細ページへのリンクを持つ） */
+  days: DayRow[];
 }
 
 const MON_FIRST_ORDER = [1, 2, 3, 4, 5, 6, 0]; // 月火水木金土日
@@ -50,8 +63,28 @@ export function buildCleaningReport(input: {
   periodType: "week" | "month";
   storeName: string;
   generatedAtLabel: string;
+  /** Web版の日別詳細ページ（/reports/[date]）へのリンクを組み立てるための絶対URLベース */
+  siteUrl: string;
 }): CleaningReportData {
-  const { tasks, period, periodType, storeName, generatedAtLabel } = input;
+  const { tasks, period, periodType, storeName, generatedAtLabel, siteUrl } = input;
+
+  const byDate = new Map<string, StatTask[]>();
+  for (const t of tasks) {
+    const arr = byDate.get(t.taskDate) ?? [];
+    arr.push(t);
+    byDate.set(t.taskDate, arr);
+  }
+  const days: DayRow[] = dateRange(period.from, period.to).map((date) => {
+    const c = overallCompletion(byDate.get(date) ?? []);
+    return {
+      date,
+      label: formatShortJp(date),
+      planned: c.planned,
+      done: c.done,
+      missed: c.missed,
+      url: `${siteUrl}/reports/${date}`,
+    };
+  });
 
   const weekdayRaw = missedByWeekday(tasks);
   const weekday: WeekdayRow[] = MON_FIRST_ORDER.map((w) => {
@@ -75,5 +108,6 @@ export function buildCleaningReport(input: {
     missRanking: missRanking(tasks, { minPlanned: 3 }).slice(0, 10),
     weekday,
     topStaff: implementationByStaff(tasks).slice(0, 10),
+    days,
   };
 }
